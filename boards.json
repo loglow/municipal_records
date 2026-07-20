@@ -1,0 +1,164 @@
+{
+  "Board of Assessors": {
+    "description": "Three elected officials with overlapping three-year terms, charged with accurately and fairly assessing all property in Westhampton as required by Massachusetts General Law. The board also administers motor-vehicle excise, abatements, and exemptions for qualifying taxpayers.",
+    "members": [
+      {
+        "name": "Marilyn Witherell"
+      }
+    ]
+  },
+  "Board of Health": {
+    "description": "The Board of Health is responsible for protecting public health, controlling disease, and promoting sanitary living conditions under state and local law. Three members serve overlapping three-year terms. The Foothills Health District serves as the board's health agent and is the first point of contact for permits and inspections.",
+    "members": [
+      {
+        "name": "Katch Batcheller",
+        "role": "Chair",
+        "phone": "413-268-8404"
+      },
+      {
+        "name": "Robbie Armenti"
+      }
+    ]
+  },
+  "COA Advisory Board": {
+    "description": "The advisory board of the Westhampton Council on Aging, which provides programs and services that enrich the lives of older adults in the community, promoting independence and quality of life for residents aged 60 and over.",
+    "members": [
+      {
+        "name": "Julia Lennen",
+        "role": "Chair"
+      },
+      {
+        "name": "Ray Fontaine",
+        "phone": "413-527-5674"
+      },
+      {
+        "name": "Dave Goddard",
+        "phone": "413-527-0349"
+      },
+      {
+        "name": "Lorraine Galica",
+        "phone": "413-527-8739"
+      },
+      {
+        "name": "Colleen Basile",
+        "phone": "413-237-9162"
+      }
+    ]
+  },
+  "Conservation Commission": {
+    "description": "The Conservation Commission reviews applications for any work that may affect a wetland, pond, stream, or river in Westhampton, and manages conservation restrictions on local properties. It typically meets on the first and third Wednesday of each month.",
+    "members": [
+      {
+        "name": "Brad Morse"
+      },
+      {
+        "name": "Bill Randolph"
+      },
+      {
+        "name": "Fred Morrison"
+      },
+      {
+        "name": "Alyson Arnold"
+      },
+      {
+        "name": "Jessica Lerman"
+      }
+    ]
+  },
+  "Elementary School Committee": {
+    "description": "The elected committee overseeing Westhampton Elementary School, which operates within the Hampshire Regional School District."
+  },
+  "Finance Committee": {
+    "description": "The Finance Committee examines matters relating to the appropriation, borrowing, and expenditure of town money, town indebtedness, and the administration of town offices and departments, and submits recommendations to town meeting.",
+    "members": [
+      {
+        "name": "Tad Weiss",
+        "role": "Chair"
+      },
+      {
+        "name": "Steve Holt"
+      },
+      {
+        "name": "Scott Stanton"
+      },
+      {
+        "name": "Maureen Dempsey"
+      },
+      {
+        "name": "Jeremy R. Durrin"
+      },
+      {
+        "name": "Jon Albitz"
+      }
+    ]
+  },
+  "Foothills Health District Executive Committee": {
+    "description": "The executive committee of the Foothills Health District, the shared public-health district serving Goshen, Westhampton, Whately, and Williamsburg. The district handles health permitting and inspections for its member towns."
+  },
+  "Library Board of Trustees": {
+    "description": "Six trustees elected to three-year terms who work closely with the library director to shape the policies and services of the Westhampton Public Library in response to community needs. The board meets monthly on the second Tuesday.",
+    "members": [
+      {
+        "name": "Jackie Brodeur",
+        "role": "Chair"
+      },
+      {
+        "name": "Anne Marie O'Reilly",
+        "role": "Vice chair"
+      },
+      {
+        "name": "Angela Griefen",
+        "role": "Treasurer"
+      },
+      {
+        "name": "Alison Thirkield",
+        "role": "Secretary"
+      },
+      {
+        "name": "Deb Estelle"
+      },
+      {
+        "name": "Rick Tracy"
+      }
+    ]
+  },
+  "Planning Board": {
+    "description": "An elected board of five members with overlapping three-year terms. The Planning Board is one of two bodies in Westhampton that consider land-use applications such as special permits and divisions of land, and it reviews proposed amendments to the zoning bylaws, making recommendations to town meeting.",
+    "members": [
+      {
+        "name": "Jennifer Milikowsky",
+        "role": "Chair",
+        "phone": "413-203-3086"
+      },
+      {
+        "name": "Wade Clement"
+      },
+      {
+        "name": "Donald (Pat) Coffey"
+      },
+      {
+        "name": "John Zimmerman"
+      },
+      {
+        "name": "Susan Bronstein"
+      }
+    ]
+  },
+  "Selectboard": {
+    "description": "The Selectboard is the town's chief executive body: three elected members with overlapping three-year terms. It prepares the warrant for town meeting, makes appointments to town boards, hires town employees, grants licenses and permits, and sets policy for the long-term direction of the town.",
+    "members": [
+      {
+        "name": "Scott Johndrow",
+        "role": "Chair",
+        "phone": "413-203-3086"
+      },
+      {
+        "name": "Susan Bronstein",
+        "phone": "413-626-0282"
+      }
+    ]
+  },
+  "Town Administrator Search Committee": {
+    "description": "An appointed committee charged with recruiting, screening, and recommending candidates for the town administrator position."
+  }
+}
