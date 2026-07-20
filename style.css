@@ -157,25 +157,11 @@ h1 {
   margin: 0 0 0.9rem;
   font-weight: 700;
 }
-h2 {
-  font-size: 1.05rem;
-  margin: 1.75rem 0 0.4rem;
-  font-weight: 700;
-}
-
 a { color: var(--accent); }
 a:hover { text-decoration-thickness: 2px; }
 
-.muted { color: var(--ink-muted); }
-.pending { font-style: italic; }
-.crumb { margin: 0 0 0.5rem; }
-.crumb a {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  text-decoration: none;
-}
-.crumb a:hover { text-decoration: underline; }
+/* Empty-cell dashes */
+.muted { color: var(--ink-faint); }
 
 .icon { flex-shrink: 0; }
 
@@ -204,20 +190,18 @@ tbody th[scope="row"] {
   font-weight: 500;
   white-space: nowrap;
 }
-/* Date column: right-justified, only as wide as the widest date.
-   The 1% width applies only to the full-width index table — a percentage
-   column would stretch the auto-width board tables to fill the page. */
+/* Date column: right-justified, only as wide as the widest date */
 .records thead th.date-col,
 .records tbody th[scope="row"] {
   text-align: right;
   white-space: nowrap;
-}
-#records-table thead th.date-col,
-#records-table tbody th[scope="row"] {
   width: 1%;
 }
-/* Dim empty/pending states inside tables */
-.records .muted { color: var(--ink-faint); }
+/* Type and Status columns sit centered */
+.records .center { text-align: center; }
+
+/* Print-only furniture, invisible on screen */
+tfoot.print-only, .print-footer { display: none; }
 
 /* Document links: icon + size, vertically centered, never wrapping */
 .doc-link {
@@ -257,8 +241,8 @@ tbody th[scope="row"] {
 .tag-upcoming { color: var(--tag-upcoming-ink); background: var(--tag-upcoming-bg); }
 .tag-today { color: var(--tag-today-ink); background: var(--tag-today-bg); }
 .tag-past { color: var(--tag-past-ink); background: var(--tag-past-bg); }
-
-.year-nav p { margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--ink-muted); }
+/* Section pills: quiet gray, deliberately not link-blue */
+.tag-section { color: var(--tag-past-ink); background: var(--tag-past-bg); }
 
 /* Index filters */
 .filters {
@@ -305,21 +289,6 @@ tbody th[scope="row"] {
   color: var(--ink-faint);
 }
 
-#no-results {
-  margin: 0.75rem 0 0;
-  font-style: italic;
-  text-align: center;
-}
-
-/* Board pages */
-.board-stats {
-  margin: -0.4rem 0 1rem;
-  color: var(--ink-muted);
-}
-/* Board tables have few columns — shrink to content instead of
-   stretching across the page */
-.year-sections table { width: auto; }
-
 /* Footer band */
 footer {
   background: var(--band);
@@ -364,11 +333,62 @@ footer .wrap {
   tbody th[scope="row"] { white-space: normal; }
 }
 
-/* Print */
+/* Print: 100% vector black on white */
 @media print {
-  header, footer, .skip-link, .crumb, .year-nav, .filters, .count,
-  #no-results { display: none; }
+  header, footer, .skip-link, .filters, .count { display: none; }
   body { color: #000; background: #fff; }
   a { color: #000; text-decoration: none; }
   main { max-width: none; padding: 0; }
+
+  /* Slightly smaller table so more rows fit and fewer cells wrap.
+     Separate (non-collapsed) borders and unsplittable rows keep the last
+     row on each page from losing its bottom rule — collapsed table borders
+     are often dropped at page breaks. */
+  .records {
+    font-size: 9pt;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .records tr { break-inside: avoid; }
+  /* Hairline row separators. Engines quantize borders differently in
+     print (Chromium paints this as 0.75pt, Firefox/macOS as 0.5pt) —
+     an accepted, invisible-on-paper difference. */
+  th, td {
+    padding: 0.25rem 1.2rem 0.25rem 0;
+    border-bottom: 1px solid #000;
+  }
+  thead th {
+    font-size: 7.5pt;
+    color: #000;
+    border-bottom: 2px solid #000;
+  }
+  .doc-link .size { font-size: 8pt; }
+  .icon { width: 11px; height: 11px; }
+  .muted { color: #000; }
+  .tag {
+    color: #000;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 7pt;
+  }
+
+  /* Footer pinned to the bottom of every printed page. The empty tfoot
+     spacer repeats at each table page break, reserving the room that the
+     fixed-position footer then occupies. */
+  tfoot.print-only { display: table-footer-group; }
+  tfoot.print-only td { border-bottom: none; padding: 0; }
+  .print-spacer { height: 6.5em; }
+  .print-footer {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    font-size: 0.7rem;
+    padding-top: 0.5rem;
+    background: #fff;
+  }
+  .print-footer p { margin: 0 0 0.15rem; }
+  .print-footer .print-count { font-style: italic; }
 }
