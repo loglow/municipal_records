@@ -1,0 +1,56 @@
+# Builds the records site and publishes it to GitHub Pages on every push.
+#
+# The clerk's workflow stays two steps: drop a PDF into the right folder
+# under Records/Boards/, commit and push. This workflow does the rest.
+#
+# The build emits site/ with a Records -> ../Records symlink so documents
+# are never duplicated in the repo; the staging step here dereferences that
+# symlink, so the deployed artifact (the only copy that ever exists) contains
+# the real files.
+#
+# One-time repo setup: Settings -> Pages -> Source: "GitHub Actions".
+
+name: Deploy records site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Build site (report appears in this step's log)
+        run: python3 build.py
+
+      - name: Stage artifact, dereferencing the Records symlink
+        run: cp -RL site _site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
