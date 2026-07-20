@@ -168,8 +168,13 @@ a:hover { text-decoration-thickness: 2px; }
 
 .muted { color: var(--ink-muted); }
 .pending { font-style: italic; }
-.crumb { margin: 0 0 0.5rem; font-size: 0.85rem; }
-.crumb a { text-decoration: none; }
+.crumb { margin: 0 0 0.5rem; }
+.crumb a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  text-decoration: none;
+}
 .crumb a:hover { text-decoration: underline; }
 
 .icon { flex-shrink: 0; }
@@ -182,10 +187,11 @@ table {
 }
 th, td {
   text-align: left;
-  padding: 0.4rem 1rem 0.4rem 0;
+  padding: 0.4rem 2.5rem 0.4rem 0;
   border-bottom: 1px solid var(--rule);
   vertical-align: middle;
 }
+th:last-child, td:last-child { padding-right: 0; }
 thead th {
   font-size: 0.75rem;
   font-weight: 700;
@@ -198,12 +204,17 @@ tbody th[scope="row"] {
   font-weight: 500;
   white-space: nowrap;
 }
-/* Date column: right-justified, only as wide as the widest date */
+/* Date column: right-justified, only as wide as the widest date.
+   The 1% width applies only to the full-width index table — a percentage
+   column would stretch the auto-width board tables to fill the page. */
 .records thead th.date-col,
 .records tbody th[scope="row"] {
   text-align: right;
-  width: 1%;
   white-space: nowrap;
+}
+#records-table thead th.date-col,
+#records-table tbody th[scope="row"] {
+  width: 1%;
 }
 /* Dim empty/pending states inside tables */
 .records .muted { color: var(--ink-faint); }
@@ -227,7 +238,7 @@ tbody th[scope="row"] {
   line-height: 1;
 }
 
-/* Tags (timing on the index; roles on member lists) */
+/* Timing tags (upcoming / today / past) */
 .tag {
   display: inline-block;
   font-size: 0.65rem;
@@ -246,8 +257,6 @@ tbody th[scope="row"] {
 .tag-upcoming { color: var(--tag-upcoming-ink); background: var(--tag-upcoming-bg); }
 .tag-today { color: var(--tag-today-ink); background: var(--tag-today-bg); }
 .tag-past { color: var(--tag-past-ink); background: var(--tag-past-bg); }
-.tag-chair { color: var(--accent); background: var(--accent-tint); }
-.tag-role { color: var(--tag-past-ink); background: var(--tag-past-bg); }
 
 .year-nav p { margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--ink-muted); }
 
@@ -303,55 +312,13 @@ tbody th[scope="row"] {
 }
 
 /* Board pages */
-.board-desc {
+.board-stats {
   margin: -0.4rem 0 1rem;
-  max-width: 46rem;
   color: var(--ink-muted);
 }
-
-.members {
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  background: var(--band);
-  padding: 0.8rem 1rem 0.5rem;
-  margin: 0 0 1.5rem;
-  width: fit-content;
-  min-width: min(100%, 24rem);
-  max-width: 100%;
-}
-.members h2 {
-  margin: 0 0 0.4rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.members p {
-  margin: 0 0 0.35rem;
-}
-.members p.muted { font-style: italic; }
-.member-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.member-list li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.2rem 0.6rem;
-  padding: 0.3rem 0;
-  border-bottom: 1px solid var(--rule);
-}
-.member-list li:last-child { border-bottom: none; }
-.member-name { font-weight: 500; }
-.member-contact {
-  margin-left: auto;
-  padding-left: 1.5rem;
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
+/* Board tables have few columns — shrink to content instead of
+   stretching across the page */
+.year-sections table { width: auto; }
 
 /* Footer band */
 footer {

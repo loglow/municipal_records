@@ -12,31 +12,12 @@ copied:
     site/style.css                      copied from the repo-root source
     site/Records -> ../Records          symlink so document links resolve
 
-Sources at the repo root: build.py, style.css (hand-edited), boards.json,
-and the Records/ document tree (the only things that belong in git).
+Sources at the repo root: build.py and style.css (hand-edited), plus the
+Records/ document tree (the only things that belong in git).
 
-Serving: point any static server at site/ (it follows the symlink). A future
-deploy step copies site/ with symlinks dereferenced — the only place document
-bytes are ever duplicated is inside that ephemeral artifact.
-
-boards.json holds per-board metadata, keyed by the exact folder name under
-Records/Boards:
-
-    {
-      "Selectboard": {
-        "description": "One paragraph about what this board does.",
-        "members": [
-          {"name": "Jane Doe", "role": "Chair",
-           "email": "jdoe@example.org", "phone": "413-555-0100"},
-          {"name": "John Smith"}
-        ]
-      }
-    }
-
-Only "name" is required per member; "role" (Chair, Vice chair, Treasurer, ...),
-"email", and "phone" are optional. `"chair": true` is accepted as shorthand
-for `"role": "Chair"`. The build warns when a boards.json key has no matching
-folder (e.g. after a rename) and when a board folder has no entry.
+Serving: point any static server at site/ (it follows the symlink). The
+GitHub Actions deploy copies site/ with symlinks dereferenced — the only
+place document bytes are ever duplicated is inside that ephemeral artifact.
 
 Run:  python3 build.py
 Pure standard library. Idempotent. Prints a build report to stdout.
@@ -57,7 +38,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 BOARDS_DIR = ROOT / "Records" / "Boards"
-BOARDS_JSON = ROOT / "boards.json"
 OUTPUT_DIR = ROOT / "site"
 MANIFEST_PATH = ROOT / ".build-manifest.json"
 
@@ -77,6 +57,13 @@ DOC_ICON = (
     '2-2V7.5z"/><path d="M14 2v6h6"/></svg>'
 )
 
+ARROW_ICON = (
+    '<svg class="icon" viewBox="0 0 24 24" width="15" height="15" fill="none" '
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+    'stroke-linejoin="round" aria-hidden="true">'
+    '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>'
+)
+
 RESET_ICON = (
     '<svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" '
     'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
@@ -88,8 +75,7 @@ RESET_ICON = (
 FOOTER_HTML = """<address class="contact">
 <div>
 <p class="contact-title">Clerk&rsquo;s office</p>
-<p>Daniel Gilbert<br>
-1 South Rd<br>
+<p>1 South Road<br>
 Westhampton, MA 01027<br>
 <a href="mailto:clerk@westhamptonma.gov">clerk@westhamptonma.gov</a><br>
 <a href="tel:+14132033080">413-203-3080</a></p>
@@ -267,53 +253,6 @@ def merge(docs: list[Document]) -> dict[str, list[Meeting]]:
     return dict(sorted(boards.items(), key=lambda kv: kv[0].lower()))
 
 
-def load_boards_meta(warnings: list[str]) -> dict[str, dict]:
-    """Read boards.json -> {folder name: {"description", "members"}}."""
-    if not BOARDS_JSON.is_file():
-        warnings.append("boards.json not found — board pages will have no "
-                        "descriptions or member lists")
-        return {}
-    try:
-        data = json.loads(BOARDS_JSON.read_text(encoding="utf-8"))
-    except ValueError as e:
-        warnings.append(f"Invalid JSON, ignored: boards.json ({e})")
-        return {}
-    if not isinstance(data, dict):
-        warnings.append("boards.json should be an object keyed by board "
-                        "folder name — ignored")
-        return {}
-    meta: dict[str, dict] = {}
-    for board, entry in data.items():
-        if not isinstance(entry, dict):
-            warnings.append(f"boards.json entry for '{board}' should be an "
-                            f"object — skipped")
-            continue
-        clean: dict = {}
-        description = entry.get("description")
-        if description is not None and not isinstance(description, str):
-            warnings.append(f'"description" for \'{board}\' should be a '
-                            f"string — ignored")
-            description = None
-        clean["description"] = description
-        raw = entry.get("members")
-        members: list[dict] | None = None
-        if raw is not None:
-            if not isinstance(raw, list):
-                warnings.append(f'"members" for \'{board}\' should be a '
-                                f"list — ignored")
-            else:
-                members = []
-                for m in raw:
-                    if not isinstance(m, dict) or not m.get("name"):
-                        warnings.append(f'Member entry without a "name" '
-                                        f"skipped for '{board}'")
-                        continue
-                    members.append(m)
-        clean["members"] = members
-        meta[board] = clean
-    return meta
-
-
 # ---------------------------------------------------------------------------
 # HTML
 
@@ -486,7 +425,7 @@ def minutes_cell(m: Meeting, root: str, today: datetime.date) -> str:
     if m.minutes:
         aria = f"{m.board} minutes, {long_date(m.date)} (PDF, {fmt_size(m.minutes.size)})"
         return doc_link(m.minutes, root, aria)
-    if m.date <= today:
+    if m.date < today:
         return ('<span class="muted pending" '
                 'aria-label="Minutes pending approval">Pending</span>')
     return '<span class="muted" aria-label="No minutes yet">—</span>'
@@ -625,41 +564,18 @@ def build_index_page(boards: dict[str, list[Meeting]], n_docs: int,
     return page(title=f"Records search — {SITE_TITLE}", root=root, body=body)
 
 
-def members_section(members: list[dict] | None) -> str:
-    if members is None:
-        inner = '<p class="muted">Member information coming soon.</p>'
-    elif not members:
-        inner = '<p class="muted">No members listed.</p>'
-    else:
-        items = []
-        for m in members:
-            role = m.get("role") or ("Chair" if m.get("chair") else None)
-            bits = [f'<span class="member-name">{esc(str(m["name"]))}</span>']
-            if role:
-                cls = ("tag tag-chair" if str(role).lower() == "chair"
-                       else "tag tag-role")
-                bits.append(f'<span class="{cls}">{esc(str(role))}</span>')
-            contact = []
-            if m.get("email"):
-                email = esc(str(m["email"]))
-                contact.append(f'<a href="mailto:{email}">{email}</a>')
-            if m.get("phone"):
-                phone = str(m["phone"])
-                tel = re.sub(r"[^0-9+]", "", phone)
-                contact.append(f'<a href="tel:{esc(tel)}">{esc(phone)}</a>')
-            row = " ".join(bits)
-            if contact:
-                row += f'<span class="member-contact">{" · ".join(contact)}</span>'
-            items.append(f"<li>{row}</li>")
-        inner = f'<ul class="member-list">\n{chr(10).join(items)}\n</ul>'
-    return f"""<section class="members" aria-labelledby="members-h">
-<h2 id="members-h">Members</h2>
-{inner}
-</section>"""
+def archive_span(entries: list[Meeting]) -> str:
+    """Human-readable date range of a board's archive, oldest to newest."""
+    first = min(m.date for m in entries)
+    last = max(m.date for m in entries)
+    if first == last:
+        return long_date(first)
+    if first.year == last.year:
+        return f"{first:%B} {first.day} – {long_date(last)}"
+    return f"{long_date(first)} – {long_date(last)}"
 
 
 def build_board_page(board: str, entries: list[Meeting],
-                     description: str | None, members: list[dict] | None,
                      today: datetime.date) -> str:
     root = "../../"
     years = sorted({m.date.year for m in entries}, reverse=True)
@@ -673,8 +589,10 @@ def build_board_page(board: str, entries: list[Meeting],
         for m in entries:
             if m.date.year != year:
                 continue
+            tag = timing_tag(m.date, today)
             rows.append(
                 f'<tr>\n<th scope="row" data-iso="{m.date.isoformat()}">{short_date(m.date)}</th>\n'
+                f'<td class="tags"><span class="tag tag-{tag}">{tag.capitalize()}</span></td>\n'
                 f"<td>{agenda_cell(m, root)}</td>\n"
                 f"<td>{minutes_cell(m, root, today)}</td>\n</tr>"
             )
@@ -682,18 +600,19 @@ def build_board_page(board: str, entries: list[Meeting],
 <h2 id="y{year}"><span id="y{year}-h">{year}</span></h2>
 <table class="records">
 <thead>
-<tr><th scope="col" class="date-col">Meeting date</th><th scope="col">Agenda</th><th scope="col">Minutes</th></tr>
+<tr><th scope="col" class="date-col">Date</th><th scope="col">Tags</th><th scope="col">Agenda</th><th scope="col">Minutes</th></tr>
 </thead>
 <tbody>
 {chr(10).join(rows)}
 </tbody>
 </table>
 </section>""")
-    desc_html = (f'<p class="board-desc">{esc(description)}</p>\n'
-                 if description else "")
-    body = f"""<nav aria-label="Breadcrumb"><p class="crumb"><a href="{root}index.html">← Home</a></p></nav>
+    n = len(entries)
+    noun = "meeting record" if n == 1 else "meeting records"
+    stats = f"{n} {noun}, {archive_span(entries)}"
+    body = f"""<nav aria-label="Breadcrumb"><p class="crumb"><a href="{root}index.html">{ARROW_ICON}Home</a></p></nav>
 <h1>{esc(board)}</h1>
-{desc_html}{members_section(members)}
+<p class="board-stats">{stats}</p>
 {year_nav}<div class="year-sections">
 {chr(10).join(sections)}
 </div>
@@ -721,17 +640,6 @@ def build() -> int:
             )
         slugs[slug] = board
 
-    meta = load_boards_meta(warnings)
-    for name in meta:
-        if name not in boards:
-            warnings.append(
-                f"boards.json entry '{name}' has no matching folder under "
-                f"Records/Boards — renamed or removed?"
-            )
-    for name in boards:
-        if name not in meta:
-            warnings.append(f"No boards.json entry for '{name}'")
-
     # Clean and regenerate site/ (never touches Records/ — the symlink
     # inside site/ is removed as a link, not followed).
     if OUTPUT_DIR.exists():
@@ -747,13 +655,10 @@ def build() -> int:
     (OUTPUT_DIR / "index.html").write_text(
         build_index_page(boards, len(docs), today), encoding="utf-8")
     for board, entries in boards.items():
-        entry = meta.get(board, {})
         out = OUTPUT_DIR / "boards" / slugify(board) / "index.html"
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(
-            build_board_page(board, entries, entry.get("description"),
-                             entry.get("members"), today),
-            encoding="utf-8")
+        out.write_text(build_board_page(board, entries, today),
+                       encoding="utf-8")
     (OUTPUT_DIR / "site.js").write_text(SITE_JS, encoding="utf-8")
     if (ROOT / "style.css").is_file():
         shutil.copy2(ROOT / "style.css", OUTPUT_DIR / "style.css")
