@@ -270,9 +270,9 @@ tfoot.print-only, .print-footer { display: none; }
   cursor: default;
   opacity: 0.5;
 }
+/* Search grows to make the filter row span the full table width */
 .filters input[type="search"] {
   flex: 1 1 10rem;
-  max-width: 18rem;
 }
 /* Anything not at its default gets the accent treatment */
 .filters .set,
