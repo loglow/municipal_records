@@ -112,7 +112,6 @@ RESET_ICON = (
 # the print footer.
 CONTACT = {
     "title": "Town Clerk",
-    "org": "Westhampton Town Clerk",
     "addr1": "1 South Road",
     "addr2": "Westhampton, MA 01027",
     "email": "clerk@westhamptonma.gov",
@@ -124,21 +123,15 @@ _TEL = "".join(c for c in CONTACT["phone"] if c.isdigit())
 FOOTER_HTML = f"""<address class="contact">
 <div>
 <p class="contact-title">{CONTACT["title"]}</p>
-<p>{CONTACT["addr1"]}<br>
-{CONTACT["addr2"]}<br>
-<a href="mailto:{CONTACT["email"]}">{CONTACT["email"]}</a><br>
+<p>{CONTACT["addr1"]}, {CONTACT["addr2"]}<br>
+<a href="mailto:{CONTACT["email"]}">{CONTACT["email"]}</a> &bull; 
 <a href="tel:+1{_TEL}">{CONTACT["phone"]}</a></p>
-</div>
-<div>
-<p class="contact-title">Office hours</p>
-<p>Tuesday, 12:00&nbsp;PM to 6:00&nbsp;PM<br>
-Wednesday, 12:00&nbsp;PM to 6:00&nbsp;PM<br>
-<em>or by appointment</em></p>
 </div>
 </address>"""
 
-PRINT_CONTACT_LINE = (f"<strong>{CONTACT['org']}</strong>, {CONTACT['addr1']}, "
-                      f"{CONTACT['addr2']}, {CONTACT['email']}, "
+PRINT_CONTACT_LINE = (f"<strong>{CONTACT['title']}</strong> &bull; "
+                      f"{CONTACT['addr1']}, "
+                      f"{CONTACT['addr2']} &bull; {CONTACT['email']} &bull; "
                       f"{CONTACT['phone']}")
 
 
@@ -519,8 +512,12 @@ INDEX_SCRIPT = """
 (function () {
   var form = document.getElementById('filters');
   var countLine = document.getElementById('count-line');
-  var printCount = document.getElementById('print-count');
-  var printFilters = document.getElementById('print-filters');
+
+  function setAll(cls, text) {
+    document.querySelectorAll('.' + cls).forEach(function (el) {
+      el.textContent = text;
+    });
+  }
   var rows = Array.prototype.slice.call(
     document.querySelectorAll('#records-table tbody tr'));
   var total = rows.reduce(function (n, r) {
@@ -533,6 +530,26 @@ INDEX_SCRIPT = """
   };
   form.hidden = false;
   form.addEventListener('submit', function (e) { e.preventDefault(); });
+
+  // Body names act as filter shortcuts: clicking one selects that body in
+  // the dropdown. Upgraded from plain text here so the no-JS page keeps
+  // honest static text.
+  rows.forEach(function (r) {
+    var cell = r.cells[1];
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'body-btn';
+    btn.textContent = cell.textContent;
+    btn.setAttribute('aria-label',
+      'Filter by ' + cell.textContent);
+    btn.addEventListener('click', function () {
+      c.body.value = 'b|' + r.getAttribute('data-section') + '|' +
+        r.getAttribute('data-body');
+      apply();
+    });
+    cell.textContent = '';
+    cell.appendChild(btn);
+  });
 
   function rowMatchesBody(r, val) {
     if (!val) return true;
@@ -563,7 +580,7 @@ INDEX_SCRIPT = """
     });
     var countText = shownDocs + ' of ' + total + ' records shown';
     countLine.textContent = countText;
-    printCount.textContent = countText;
+    setAll('js-print-count', countText);
     c.reset.disabled = !filtered;
     updatePrintFilters();
   }
@@ -582,10 +599,10 @@ INDEX_SCRIPT = """
     var bodyLabel = bodyVal
       ? c.body.options[c.body.selectedIndex].text : 'All';
     var q = c.q.value.trim();
-    printFilters.textContent = 'Generated: ' + timestamp() +
-      ', Filters: Body = ' + bodyLabel +
+    setAll('js-print-generated', 'Generated: ' + timestamp());
+    setAll('js-print-filters', 'Filters: Body = ' + bodyLabel +
       ', Year = ' + (c.year.value || 'All') +
-      ', Text = ' + (q ? '\\u201c' + q + '\\u201d' : 'None');
+      (q ? ', Search = \\u201c' + q + '\\u201d' : ''));
   }
 
   window.addEventListener('beforeprint', updatePrintFilters);
@@ -650,6 +667,10 @@ def build_index_page(records: list[Record], docs: list[Document],
         )
 
     n_docs = len(docs)
+    footer_lines = f"""<p class="print-count js-print-count">{n_docs} of {n_docs} records shown</p>
+<p><span class="js-print-generated">Generated just now</span> &bull; 
+<span class="js-print-filters">Filters: Body = All, Year = All</span></p>
+<p>{PRINT_CONTACT_LINE}</p>"""
     body = f"""<h1>Records archive</h1>
 
 <form class="filters" id="filters" hidden>
@@ -678,9 +699,7 @@ def build_index_page(records: list[Record], docs: list[Document],
 </table>
 <p class="count" id="count-line">{n_docs} of {n_docs} records shown</p>
 <div class="print-footer">
-<p class="print-count" id="print-count">{n_docs} of {n_docs} records shown</p>
-<p id="print-filters">Filters: Body = All, Year = All, Text = None</p>
-<p>{PRINT_CONTACT_LINE}</p>
+{footer_lines}
 </div>
 <script>{INDEX_SCRIPT}</script>
 """

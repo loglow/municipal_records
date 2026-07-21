@@ -101,10 +101,10 @@ header .wrap {
 }
 .site-name a {
   color: var(--ink);
-  text-decoration: none;
   font-weight: 700;
 }
-.site-name a:hover { color: var(--accent); }
+/* The wordmark reads as a logo: no hover styling (it still links home) */
+.site-name a:hover { text-decoration: none; }
 
 /* Header display controls: date format, sort order, theme.
    Kept deliberately dim — utility chrome, not content. */
@@ -123,11 +123,12 @@ header .wrap {
   font-size: 0.7rem;
   color: var(--ink-faint);
 }
+/* No overflow:hidden here — it would clip the buttons' focus outlines;
+   the end buttons carry the rounding themselves instead */
 .toggle {
   display: inline-flex;
   border: 1px solid var(--rule);
   border-radius: 7px;
-  overflow: hidden;
 }
 .toggle button {
   font: inherit;
@@ -136,10 +137,17 @@ header .wrap {
   color: var(--ink-faint);
   background: transparent;
   border: none;
+  border-radius: 0;
   padding: 0.15rem 0.45rem;
   cursor: pointer;
 }
+.toggle button:first-child { border-radius: 6px 0 0 6px; }
+.toggle button:last-child { border-radius: 0 6px 6px 0; }
 .toggle button + button { border-left: 1px solid var(--rule); }
+.toggle button:focus-visible {
+  position: relative;
+  z-index: 1;
+}
 .toggle button[aria-pressed="true"] {
   background: var(--toggle-on);
   color: var(--ink-muted);
@@ -157,11 +165,23 @@ h1 {
   margin: 0 0 0.9rem;
   font-weight: 700;
 }
-a { color: var(--accent); }
-a:hover { text-decoration-thickness: 2px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
 /* Empty-cell dashes */
 .muted { color: var(--ink-faint); }
+
+/* Body names are filter shortcuts (JS-added buttons styled as quiet links) */
+.body-btn {
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.body-btn:hover { text-decoration: underline; }
 
 .icon { flex-shrink: 0; }
 
@@ -208,7 +228,6 @@ tfoot.print-only, .print-footer { display: none; }
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  text-decoration: none;
   vertical-align: middle;
   white-space: nowrap;
   /* vertical-align: middle still leaves inline boxes ~1.7px below the
@@ -216,7 +235,6 @@ tfoot.print-only, .print-footer { display: none; }
   position: relative;
   top: -1.7px;
 }
-.doc-link:hover { text-decoration: underline; }
 .doc-link .size {
   font-size: 0.8rem;
   line-height: 1;
@@ -337,8 +355,13 @@ footer .wrap {
 @media print {
   header, footer, .skip-link, .filters, .count { display: none; }
   body { color: #000; background: #fff; }
-  a { color: #000; text-decoration: none; }
-  main { max-width: none; padding: 0; }
+  a { color: #000; }
+  /* Built-in 0.5in margins — designed to print with dialog margins OFF.
+     Sides + first-page top come from main; the top of every later page
+     comes from the repeating thead's padding (cancelled on page one by
+     the table's negative margin); the bottom of every page comes from
+     the tfoot spacer + the fixed footer's offset. */
+  main { max-width: none; padding: 0.5in 0.5in 0; }
 
   /* Slightly smaller table so more rows fit and fewer cells wrap.
      Separate (non-collapsed) borders and unsplittable rows keep the last
@@ -348,6 +371,7 @@ footer .wrap {
     font-size: 9pt;
     border-collapse: separate;
     border-spacing: 0;
+    margin-top: -0.5in;
   }
   .records tr { break-inside: avoid; }
   /* Hairline row separators. Engines quantize borders differently in
@@ -361,10 +385,11 @@ footer .wrap {
     font-size: 7.5pt;
     color: #000;
     border-bottom: 2px solid #000;
+    padding-top: 0.5in;
   }
   .doc-link .size { font-size: 8pt; }
   .icon { width: 11px; height: 11px; }
-  .muted { color: #000; }
+  .muted, .body-btn { color: #000; }
   .tag {
     color: #000;
     background: none;
@@ -378,17 +403,29 @@ footer .wrap {
      fixed-position footer then occupies. */
   tfoot.print-only { display: table-footer-group; }
   tfoot.print-only td { border-bottom: none; padding: 0; }
-  .print-spacer { height: 6.5em; }
+  .print-spacer { height: calc(0.5in + 5.5em); }
+  /* Fixed to the page box, repeated at the bottom of every printed page
+     (Chrome/Firefox); the tfoot spacer reserves its room. Safari places
+     this imperfectly — accepted. The accent bar matches the table-head
+     rule weight and runs exactly from first line's top to last line's
+     bottom. */
   .print-footer {
     display: block;
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    bottom: 0.5in;
+    left: 0.5in;
+    right: 0.5in;
     font-size: 0.7rem;
-    padding-top: 0.5rem;
+    line-height: 1.15;
     background: #fff;
+    border-left: 2px solid #000;
+    padding-left: 0.5rem;
   }
-  .print-footer p { margin: 0 0 0.15rem; }
+  .print-footer p { margin: 0 0 0.1rem; }
+  .print-footer p:last-child { margin-bottom: 0; }
   .print-footer .print-count { font-style: italic; }
 }
+
+/* The page carries its own margins (see print block) — zero here so the
+   print dialog's "Default" matches printing with margins off. */
+@page { margin: 0; }
