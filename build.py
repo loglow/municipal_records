@@ -6,7 +6,7 @@ dated record entries, and emits a deliberately single-page static site into
 site/ (gitignored, disposable), linking directly to the PDFs in Records/ —
 documents are never copied:
 
-    site/index.html             the whole site: the town records search
+    site/index.html             the whole site: one searchable records table
     site/site.js                display-preference script
     site/style.css              copied from the repo-root source
     site/Records -> ../Records  symlink so document links resolve
@@ -70,6 +70,7 @@ SECTIONS: dict[str, dict] = {
         "title": "Elections",
         "pill": "Election",
         "known_bodies": [
+            "Annual Town Caucus",
             "Annual Town Election",
             "Special Town Election",
             "State Primary",
@@ -151,6 +152,7 @@ class Document:
     label: str  # "Agenda", "Warrant", "Minutes", "Results"
     source: Path
     size: int
+    pages: int | None
 
     def url(self) -> str:
         return urllib.parse.quote(self.source.relative_to(ROOT).as_posix())
@@ -206,27 +208,33 @@ def body_sort_key(section: str, body: str):
     return (1, 0, body.lower())
 
 
-def pdf_has_text_layer(path: Path) -> bool:
-    """Heuristic: does this PDF embed any fonts / text-drawing operators?
+def pdf_info(path: Path) -> tuple[bool, int | None]:
+    """One pass over a PDF: (has_text_layer, page_count).
 
-    Image-only scans have neither. Checks raw bytes first, then peeks inside
-    Flate-compressed streams where object streams may hide font dictionaries.
+    Text layer: image-only scans embed no fonts / text operators. Pages:
+    count page objects (raw plus inside Flate-compressed object streams,
+    where modern PDFs often keep them), falling back to the page tree's
+    /Count. Both are heuristics; page count returns None when unsure.
     """
     data = path.read_bytes()
-    if b"/Font" in data:
-        return True
+    chunks = [data]
     for m in re.finditer(rb"stream\r?\n", data):
         start = m.end()
         end = data.find(b"endstream", start)
         if end == -1:
             continue
         try:
-            chunk = zlib.decompress(data[start:end].rstrip(b"\r\n"))
+            chunks.append(zlib.decompress(data[start:end].rstrip(b"\r\n")))
         except zlib.error:
             continue
-        if b"/Font" in chunk or b"Tj" in chunk or b"TJ" in chunk:
-            return True
-    return False
+    has_text = b"/Font" in data or any(
+        b"/Font" in c or b"Tj" in c or b"TJ" in c for c in chunks[1:])
+    pages = sum(len(re.findall(rb"/Type\s*/Page(?!s)", c)) for c in chunks)
+    if pages == 0:
+        counts = [int(n) for c in chunks
+                  for n in re.findall(rb"/Count\s+(\d+)", c)]
+        pages = max(counts, default=0)
+    return has_text, (pages or None)
 
 
 # ---------------------------------------------------------------------------
@@ -299,10 +307,12 @@ def scan(warnings: list[str]) -> list[Document]:
                             f"Malformed date in filename (expected "
                             f"YYYY-MM-DD.pdf), skipped: {f.relative_to(ROOT)}")
                         continue
+                    has_text, pages = pdf_info(f)
                     docs.append(Document(
                         section=section, body=body, date=date, role=role,
-                        label=label, source=f, size=f.stat().st_size))
-                    if not pdf_has_text_layer(f):
+                        label=label, source=f, size=f.stat().st_size,
+                        pages=pages))
+                    if not has_text:
                         warnings.append(
                             f"Possible image-only scan (no text layer "
                             f"found): {f.relative_to(ROOT)} — consider OCR")
@@ -310,6 +320,8 @@ def scan(warnings: list[str]) -> list[Document]:
 
 
 def merge(docs: list[Document], warnings: list[str]) -> list[Record]:
+    """Fold documents into (section, body, date) records — one before-doc
+    and one after-doc per record; duplicates warn and are ignored."""
     records: dict[tuple[str, str, datetime.date], Record] = {}
     for doc in docs:
         key = (doc.section, doc.body, doc.date)
@@ -491,21 +503,17 @@ SITE_JS = """\
 def doc_cell(doc: Document | None) -> str:
     if doc is None:
         return '<span class="muted">—</span>'
+    spoken = f"PDF, {fmt_size(doc.size)}"
+    if doc.pages:
+        spoken += f", {doc.pages} page" + ("s" if doc.pages != 1 else "")
+    pages_html = f'<span class="pages">{doc.pages or ""}</span>'
     aria = (f"{doc.body} {doc.label.lower()}, {long_date(doc.date)} "
-            f"(PDF, {fmt_size(doc.size)})")
+            f"({spoken})")
     return (
         f'<a class="doc-link" href="{doc.url()}" aria-label="{esc(aria)}">'
-        f'{DOC_ICON}<span class="size">{fmt_size(doc.size)}</span></a>'
+        f'{DOC_ICON}<span class="size">{fmt_size(doc.size)}</span>'
+        f'{pages_html}</a>'
     )
-
-
-def labels_present(docs: list[Document], role: str) -> str:
-    """Column header for a role: labels seen in the data, KINDS order."""
-    seen = {d.label for d in docs if d.role == role}
-    ordered = [label for _, (r, label) in KINDS.items()
-               if r == role and label in seen]
-    return " / ".join(ordered) if ordered else \
-        next(label for _, (r, label) in KINDS.items() if r == role)
 
 
 INDEX_SCRIPT = """
@@ -623,6 +631,7 @@ INDEX_SCRIPT = """
 def build_index_page(records: list[Record], docs: list[Document],
                      sections_present: list[str],
                      today: datetime.date) -> str:
+    page_title = "Meetings & elections"
     ordered = sorted(records, key=lambda r: (r.date, r.body.lower()),
                      reverse=True)
     years = sorted({r.date.year for r in ordered}, reverse=True)
@@ -641,12 +650,10 @@ def build_index_page(records: list[Record], docs: list[Document],
     body_opts = "\n".join(groups)
     year_opts = "\n".join(f'    <option>{y}</option>' for y in years)
 
-    before_h = labels_present(docs, "before")
-    after_h = labels_present(docs, "after")
-
     rows = []
     for rec in ordered:
         pill = SECTIONS[rec.section]["pill"]
+        pill_class = "tag-" + rec.section.lower().replace(" ", "-")
         tag = timing_tag(rec.date, today)
         ndocs = (1 if rec.before else 0) + (1 if rec.after else 0)
         search = " ".join([
@@ -658,12 +665,12 @@ def build_index_page(records: list[Record], docs: list[Document],
             f'data-year="{rec.date.year}" data-ndocs="{ndocs}" '
             f'data-search="{esc(search)}">\n'
             f'<th scope="row" data-iso="{rec.date.isoformat()}">'
-            f"{short_date(rec.date)}</th>\n"
-            f"<td>{esc(rec.body)}</td>\n"
-            f'<td class="tags center"><span class="tag tag-section">{esc(pill)}</span></td>\n'
+            f'{short_date(rec.date)}</th>\n'
+            f'<td>{esc(rec.body)}</td>\n'
+            f'<td class="tags center"><span class="tag tag-section {pill_class}">{esc(pill)}</span></td>\n'
             f'<td class="tags center"><span class="tag tag-{tag}">{tag.capitalize()}</span></td>\n'
-            f"<td>{doc_cell(rec.before)}</td>\n"
-            f"<td>{doc_cell(rec.after)}</td>\n</tr>"
+            f'<td class="doc">{doc_cell(rec.before)}</td>\n'
+            f'<td class="doc">{doc_cell(rec.after)}</td>\n</tr>'
         )
 
     n_docs = len(docs)
@@ -671,7 +678,7 @@ def build_index_page(records: list[Record], docs: list[Document],
 <p><span class="js-print-generated">Generated just now</span> &bull; 
 <span class="js-print-filters">Filters: Body = All, Year = All</span></p>
 <p>{PRINT_CONTACT_LINE}</p>"""
-    body = f"""<h1>Records archive</h1>
+    body = f"""<h1>{page_title}</h1>
 
 <form class="filters" id="filters" hidden>
   <button type="button" id="f-reset" disabled>{RESET_ICON}Reset</button>
@@ -688,7 +695,7 @@ def build_index_page(records: list[Record], docs: list[Document],
 
 <table id="records-table" class="records">
 <thead>
-<tr><th scope="col" class="date-col">Date</th><th scope="col">Body</th><th scope="col" class="center">Type</th><th scope="col" class="center">Status</th><th scope="col">{before_h}</th><th scope="col">{after_h}</th></tr>
+<tr><th scope="col" class="date-col">Date</th><th scope="col">Body</th><th scope="col" class="center">Type</th><th scope="col" class="center">Status</th><th scope="col" class="center doc">Agenda/<br>Warrant</th><th scope="col" class="center doc">Minutes/<br>Results</th></tr>
 </thead>
 <tbody>
 {chr(10).join(rows)}
@@ -703,7 +710,7 @@ def build_index_page(records: list[Record], docs: list[Document],
 </div>
 <script>{INDEX_SCRIPT}</script>
 """
-    return page(title=f"Records archive — {SITE_TITLE}", body=body)
+    return page(title=f"{SITE_TITLE} — {page_title}", body=body)
 
 
 # ---------------------------------------------------------------------------

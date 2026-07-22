@@ -19,6 +19,13 @@
   --tag-today-bg: #dcf0e2;
   --tag-past-ink: #767d84;
   --tag-past-bg: #f0f1f3;
+  --tag-board-ink: #7d6b56;
+  --tag-board-bg: #f2eee7;
+  --tag-tm-ink: #96592c;
+  --tag-tm-bg: #f8ecdc;
+  --tag-election-ink: #8a5c62;
+  --tag-election-bg: #f6eceb;
+  --doc-hover: #eef2f7;
 }
 
 :root[data-theme="dark"] {
@@ -37,6 +44,13 @@
   --tag-today-bg: #263c2c;
   --tag-past-ink: #82888e;
   --tag-past-bg: #33373b;
+  --tag-board-ink: #ab9781;
+  --tag-board-bg: #37322b;
+  --tag-tm-ink: #cd955a;
+  --tag-tm-bg: #3f3120;
+  --tag-election-ink: #ba8d90;
+  --tag-election-bg: #3d2c2d;
+  --doc-hover: #3b444f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -56,6 +70,13 @@
     --tag-today-bg: #263c2c;
     --tag-past-ink: #82888e;
     --tag-past-bg: #33373b;
+    --tag-board-ink: #ab9781;
+    --tag-board-bg: #37322b;
+    --tag-tm-ink: #cd955a;
+    --tag-tm-bg: #3f3120;
+    --tag-election-ink: #ba8d90;
+    --tag-election-bg: #3d2c2d;
+    --doc-hover: #3b444f;
   }
 }
 
@@ -74,7 +95,7 @@ body {
 }
 
 .wrap, main {
-  max-width: 60rem;
+  max-width: 70rem;
   width: 100%;
   margin: 0 auto;
   padding: 0 1.25rem;
@@ -180,6 +201,7 @@ a:hover { text-decoration: underline; }
   padding: 0;
   cursor: pointer;
   text-align: left;
+  white-space: nowrap;
 }
 .body-btn:hover { text-decoration: underline; }
 
@@ -193,11 +215,13 @@ table {
 }
 th, td {
   text-align: left;
-  padding: 0.4rem 2.5rem 0.4rem 0;
+  padding: 0.4rem 2rem 0.4rem 0;
   border-bottom: 1px solid var(--rule);
   vertical-align: middle;
 }
-th:last-child, td:last-child { padding-right: 0; }
+/* Rows carry a little edge padding so content stays off the rule ends */
+th:first-child, td:first-child { padding-left: 1rem; }
+th:last-child, td:last-child { padding-right: 1rem; }
 thead th {
   font-size: 0.75rem;
   font-weight: 700;
@@ -205,6 +229,8 @@ thead th {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-bottom: 3px solid var(--ink);
+  vertical-align: bottom;
+  white-space: nowrap;
 }
 tbody th[scope="row"] {
   font-weight: 500;
@@ -219,25 +245,53 @@ tbody th[scope="row"] {
 }
 /* Type and Status columns sit centered */
 .records .center { text-align: center; }
+/* Document columns flex like the others; the clusters are constant-width
+   (fixed icon + size box + pages box) and centered, so they track the
+   centered header at any column width while staying row-aligned */
+.records .doc {
+  text-align: center;
+  white-space: nowrap;
+}
+.records td.doc .muted { opacity: 0.55; }
 
 /* Print-only furniture, invisible on screen */
 tfoot.print-only, .print-footer { display: none; }
 
-/* Document links: icon + size, vertically centered, never wrapping */
+/* Document links: icon + size + pages, vertically centered, never
+   wrapping. Hover is a tinted pill around the whole cluster (padding
+   offset by negative margin so layout doesn't shift). */
 .doc-link {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
   vertical-align: middle;
   white-space: nowrap;
+  padding: 0.18rem 0.55rem;
+  margin: -0.18rem -0.55rem;
+  border-radius: 999px;
   /* vertical-align: middle still leaves inline boxes ~1.7px below the
      optical center of the row text; nudge to true center */
   position: relative;
   top: -1.7px;
 }
+.doc-link:hover {
+  text-decoration: none;
+  background: var(--doc-hover);
+}
 .doc-link .size {
   font-size: 0.8rem;
   line-height: 1;
+  /* fixed box so the page-number sub-column aligns across rows */
+  min-width: 3.1rem;
+  text-align: left;
+}
+.doc-link .pages {
+  font-size: 0.8rem;
+  line-height: 1;
+  color: var(--ink-faint);
+  /* fixed box like .size, so all clusters share one width */
+  min-width: 2ch;
+  text-align: left;
 }
 
 /* Timing tags (upcoming / today / past) */
@@ -259,8 +313,13 @@ tfoot.print-only, .print-footer { display: none; }
 .tag-upcoming { color: var(--tag-upcoming-ink); background: var(--tag-upcoming-bg); }
 .tag-today { color: var(--tag-today-ink); background: var(--tag-today-bg); }
 .tag-past { color: var(--tag-past-ink); background: var(--tag-past-bg); }
-/* Section pills: quiet gray, deliberately not link-blue */
+/* Section pills: a brown family — warm (town meeting), neutral (board),
+   reddish (election) — same weight, no color hierarchy. .tag-section is
+   the gray fallback for any future section without its own palette. */
 .tag-section { color: var(--tag-past-ink); background: var(--tag-past-bg); }
+.tag-boards { color: var(--tag-board-ink); background: var(--tag-board-bg); }
+.tag-town-meetings { color: var(--tag-tm-ink); background: var(--tag-tm-bg); }
+.tag-elections { color: var(--tag-election-ink); background: var(--tag-election-bg); }
 
 /* Index filters */
 .filters {
@@ -345,10 +404,9 @@ footer .wrap {
   outline-offset: 2px;
 }
 
-/* Narrow screens: let tables scroll instead of crushing */
+/* Narrow screens: let the table scroll instead of crushing */
 @media (max-width: 40rem) {
   table { display: block; overflow-x: auto; }
-  tbody th[scope="row"] { white-space: normal; }
 }
 
 /* Print: 100% vector black on white */
@@ -387,9 +445,11 @@ footer .wrap {
     border-bottom: 2px solid #000;
     padding-top: 0.5in;
   }
-  .doc-link .size { font-size: 8pt; }
+  .doc-link .size, .doc-link .pages { font-size: 8pt; }
+  .doc-link { padding: 0; margin: 0; }
   .icon { width: 11px; height: 11px; }
-  .muted, .body-btn { color: #000; }
+  .muted, .body-btn, .doc-link .pages { color: #000; }
+  .records td.doc .muted { opacity: 1; }
   .tag {
     color: #000;
     background: none;
