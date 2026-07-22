@@ -236,6 +236,14 @@ tbody th[scope="row"] {
   font-weight: 500;
   white-space: nowrap;
 }
+/* A touch of extra air under the heavy header rule — perceptual
+   compensation so it doesn't crowd the first row. A phantom spacer row
+   stays first no matter how rows are filtered or re-sorted. */
+tbody::before {
+  content: "";
+  display: table-row;
+  height: 0.2rem;
+}
 /* Date column: right-justified, only as wide as the widest date */
 .records thead th.date-col,
 .records tbody th[scope="row"] {
@@ -432,6 +440,7 @@ footer .wrap {
     margin-top: -0.5in;
   }
   .records tr { break-inside: avoid; }
+  tbody::before { display: none; }
   /* Hairline row separators. Engines quantize borders differently in
      print (Chromium paints this as 0.75pt, Firefox/macOS as 0.5pt) —
      an accepted, invisible-on-paper difference. */
