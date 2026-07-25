@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Static site generator for the Westhampton records archive.
 
-Scans Records/<Section>/<Body>/<Kind>/YYYY-MM-DD.pdf, merges the files into
+Scans Records/<Section>/<Body>/<Kind>/YYYY-MM-DD.pdf — agendas and
+warrants may carry the meeting time, place, and remote-meeting code as
+"YYYY-MM-DD HHMM Location, Provider code.pdf" (24-hour time; each part
+optional) — merges the files into
 dated record entries, and emits a deliberately single-page static site into
 site/ (gitignored, disposable), linking directly to the PDFs in Records/ —
 documents are never copied:
@@ -90,7 +93,15 @@ KINDS: dict[str, tuple[str, str]] = {
     "Results": ("after", "Results"),
 }
 
-DATE_NAME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+# Remote-meeting providers: a location part reading "<Provider> <code>"
+# becomes a join link in the Location column. A new provider is a new entry.
+REMOTE_PROVIDERS: dict[str, str] = {
+    "Zoom": "https://zoom.us/j/{code}",
+}
+
+REMOTE_CODE_RE = re.compile(r"^\d{9,11}$")
+
+STEM_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?: (\d{4}))?(?: (.+))?$")
 IGNORED_FILES = {".DS_Store", "Thumbs.db"}
 
 DOC_ICON = (
@@ -99,6 +110,14 @@ DOC_ICON = (
     'stroke-linejoin="round" aria-hidden="true">'
     '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 '
     '2-2V7.5z"/><path d="M14 2v6h6"/></svg>'
+)
+
+EXT_ICON = (
+    '<svg class="icon" viewBox="0 0 24 24" width="10" height="10" fill="none" '
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+    'stroke-linejoin="round" aria-hidden="true">'
+    '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 '
+    '2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>'
 )
 
 RESET_ICON = (
@@ -119,6 +138,22 @@ CONTACT = {
     "phone": "413-203-3080",
 }
 
+# Known meeting places: location name -> address lines revealed when a
+# reader expands the location name in the table. A new place is a new
+# entry; a single line may be a plain string.
+LOCATIONS: dict[str, tuple[str, ...] | str] = {
+    "Town Hall": ("Westhampton Town Hall", "1 South Road", "Westhampton, MA 01027"),
+    "Town Hall Annex": ("Westhampton Town Hall Annex", "3 South Road", "Westhampton, MA 01027"),
+    "Public Library": ("Westhampton Public Library", "1 North Road", "Westhampton, MA 01027"),
+    "Galica Residence": ("Galica Residence", "260 North Road", "Westhampton, MA 01027"),
+    "HRHS Library": ("Hampshire Regional High School", "School Library", "19 Stage Road", "Westhampton, MA 01027"),
+    "FHD Office": ("Foothills Health District Office", "45 Main Street", "Williamsburg, MA 01096"),
+    "WH Woods Unit F": ("Westhampton Woods Senior Housing", "13 Main Road Unit F", "Westhampton, MA 01027"),
+    "WES Library": ("Westhampton Elementary School", "School Library", "37 Kings Highway", "Westhampton, MA 01027"),
+    "HRHS Room 133": ("Hampshire Regional High School", "Career Center Guidance Room 133", "19 Stage Road", "Westhampton, MA 01027"),
+    "HRHS Room 148": ("Hampshire Regional High School", "Conference Room 148", "19 Stage Road", "Westhampton, MA 01027"),
+}
+
 _TEL = "".join(c for c in CONTACT["phone"] if c.isdigit())
 
 FOOTER_HTML = f"""<address class="contact">
@@ -130,7 +165,7 @@ FOOTER_HTML = f"""<address class="contact">
 </div>
 </address>"""
 
-PRINT_CONTACT_LINE = (f"<strong>{CONTACT['title']}</strong> &bull; "
+PRINT_CONTACT_LINE = (f"{CONTACT['title']} &bull; "
                       f"{CONTACT['addr1']}, "
                       f"{CONTACT['addr2']} &bull; {CONTACT['email']} &bull; "
                       f"{CONTACT['phone']}")
@@ -153,6 +188,9 @@ class Document:
     source: Path
     size: int
     pages: int | None
+    time: datetime.time | None
+    location: str | None  # physical place
+    remote: tuple[str, str | None] | None  # (provider, join URL or None)
 
     def url(self) -> str:
         return urllib.parse.quote(self.source.relative_to(ROOT).as_posix())
@@ -190,6 +228,11 @@ def fmt_size(n: int) -> str:
 
 def esc(s: str) -> str:
     return html.escape(s, quote=True)
+
+
+def fmt_time(t: datetime.time) -> str:
+    """12-hour display form; the ISO form is t.strftime('%H:%M')."""
+    return f"{(t.hour % 12) or 12}:{t.minute:02d} {'AM' if t.hour < 12 else 'PM'}"
 
 
 def timing_tag(date: datetime.date, today: datetime.date) -> str:
@@ -295,7 +338,7 @@ def scan(warnings: list[str]) -> list[Document]:
                         warnings.append(
                             f"Not a PDF, skipped: {f.relative_to(ROOT)}")
                         continue
-                    m = DATE_NAME_RE.match(f.stem)
+                    m = STEM_RE.match(f.stem)
                     date = None
                     if m:
                         try:
@@ -305,13 +348,56 @@ def scan(warnings: list[str]) -> list[Document]:
                     if date is None:
                         warnings.append(
                             f"Malformed date in filename (expected "
-                            f"YYYY-MM-DD.pdf), skipped: {f.relative_to(ROOT)}")
+                            f"YYYY-MM-DD[ HHMM Location].pdf), skipped: "
+                            f"{f.relative_to(ROOT)}")
                         continue
+                    time = location = remote = None
+                    if m[4]:
+                        try:
+                            time = datetime.time(int(m[4][:2]), int(m[4][2:]))
+                        except ValueError:
+                            warnings.append(
+                                f"Malformed time '{m[4]}' in filename, "
+                                f"ignored: {f.relative_to(ROOT)}")
+                    # The location, with an optional comma-separated
+                    # "<Provider> <code>" remote part for hybrid meetings
+                    # (or as the whole location when remote-only). A bare
+                    # provider name with no meeting code still shows as a
+                    # remote pill, just gray and unlinked.
+                    for part in (m[5] or "").split(","):
+                        part = part.strip()
+                        if not part:
+                            continue
+                        for prov, url in REMOTE_PROVIDERS.items():
+                            if part == prov:
+                                if remote is None:
+                                    remote = (prov, None)
+                                break
+                            code = (part[len(prov):].strip()
+                                    if part.startswith(prov + " ") else "")
+                            if code and REMOTE_CODE_RE.match(code):
+                                if remote is None:
+                                    remote = (prov, url.format(code=code))
+                                break
+                            if code:
+                                warnings.append(
+                                    f"Unrecognized {prov} meeting code "
+                                    f"'{code}' (left as location text): "
+                                    f"{f.relative_to(ROOT)}")
+                        else:
+                            if location is None:
+                                location = part
+                            else:
+                                warnings.append(
+                                    f"Multiple locations in filename (one "
+                                    f"supported), ignored '{part}': "
+                                    f"{f.relative_to(ROOT)}")
                     has_text, pages = pdf_info(f)
                     docs.append(Document(
                         section=section, body=body, date=date, role=role,
                         label=label, source=f, size=f.stat().st_size,
-                        pages=pages))
+                        pages=pages, time=time, location=location,
+                        remote=remote))
                     if not has_text:
                         warnings.append(
                             f"Possible image-only scan (no text layer "
@@ -359,7 +445,7 @@ def page(*, title: str, body: str) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{esc(title)}</title>
-<script>try{{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}}catch(e){{}}</script>
+<script>try{{if(localStorage.getItem("theme")==="light")document.documentElement.setAttribute("data-theme","light")}}catch(e){{}}</script>
 <link rel="stylesheet" href="style.css?v={css_v}">
 <script src="site.js?v={js_v}" defer></script>
 </head>
@@ -377,6 +463,13 @@ def page(*, title: str, body: str) -> str:
       </div>
     </div>
     <div class="control">
+      <span class="control-label" id="time-label">Time</span>
+      <div class="toggle" role="group" aria-labelledby="time-label">
+        <button type="button" id="time-12" aria-pressed="true">12h</button>
+        <button type="button" id="time-24" aria-pressed="false">24h</button>
+      </div>
+    </div>
+    <div class="control">
       <span class="control-label" id="sort-label">Sort</span>
       <div class="toggle" role="group" aria-labelledby="sort-label">
         <button type="button" id="sort-newest" aria-pressed="true">Desc</button>
@@ -386,9 +479,8 @@ def page(*, title: str, body: str) -> str:
     <div class="control">
       <span class="control-label" id="theme-label">Theme</span>
       <div class="toggle" role="group" aria-labelledby="theme-label">
-        <button type="button" id="theme-auto" aria-pressed="true">Auto</button>
+        <button type="button" id="theme-dark" aria-pressed="true">Dark</button>
         <button type="button" id="theme-light" aria-pressed="false">Light</button>
-        <button type="button" id="theme-dark" aria-pressed="false">Dark</button>
       </div>
     </div>
   </div>
@@ -407,17 +499,19 @@ def page(*, title: str, body: str) -> str:
 """
 
 
-# Site-wide display preferences: theme, sort order, and date format toggles
-# in the header. Sort reorders any `table.records` tbody; date format swaps
-# text on any [data-iso] cell.
+# Site-wide display preferences: theme, sort order, and date and time
+# format toggles in the header. Sort reorders any `table.records` tbody;
+# time format swaps text on [data-24] cells; date format recomposes
+# [data-iso] cells around their persistent year element (which the index
+# script owns as a filter toggle). The pressed choice in each toggle is
+# disabled.
 SITE_JS = """\
 (function () {
   var controls = document.getElementById('display-controls');
   if (!controls) return;
   var themeBtns = {
-    auto: document.getElementById('theme-auto'),
-    light: document.getElementById('theme-light'),
-    dark: document.getElementById('theme-dark')
+    dark: document.getElementById('theme-dark'),
+    light: document.getElementById('theme-light')
   };
   var sortBtns = {
     newest: document.getElementById('sort-newest'),
@@ -427,28 +521,42 @@ SITE_JS = """\
     short: document.getElementById('date-short'),
     iso: document.getElementById('date-iso')
   };
+  var timeBtns = {
+    h12: document.getElementById('time-12'),
+    h24: document.getElementById('time-24')
+  };
 
-  var theme = 'auto', sort = 'newest', datefmt = 'short';
+  var theme = 'dark', sort = 'newest', datefmt = 'short', timefmt = 'h12';
   try {
-    var t = localStorage.getItem('theme');
-    if (t === 'light' || t === 'dark') theme = t;
+    if (localStorage.getItem('theme') === 'light') theme = 'light';
     if (localStorage.getItem('sort') === 'oldest') sort = 'oldest';
     if (localStorage.getItem('datefmt') === 'iso') datefmt = 'iso';
+    if (localStorage.getItem('timefmt') === 'h24') timefmt = 'h24';
   } catch (e) {}
 
   var sortables = [];
   document.querySelectorAll('table.records tbody').forEach(function (el) {
     sortables.push({ el: el, items: Array.prototype.slice.call(el.children) });
   });
+  // Date cells are two parts — the year element persists across format
+  // swaps (the index script upgrades it into a filter toggle), so the
+  // swap recomposes around it instead of rewriting the cell's text
   var dateCells = Array.prototype.slice.call(
     document.querySelectorAll('[data-iso]'));
   dateCells.forEach(function (cell) {
-    cell.setAttribute('data-short', cell.textContent);
+    var rest = cell.querySelector('.date-rest');
+    if (rest) cell.setAttribute('data-rest', rest.textContent);
+  });
+  var timeCells = Array.prototype.slice.call(
+    document.querySelectorAll('[data-24]'));
+  timeCells.forEach(function (cell) {
+    cell.setAttribute('data-12', cell.textContent);
   });
 
   function setPressed(group, val) {
     Object.keys(group).forEach(function (k) {
       group[k].setAttribute('aria-pressed', String(k === val));
+      group[k].disabled = k === val;  // the active choice is inert
     });
   }
 
@@ -469,19 +577,39 @@ SITE_JS = """\
   }
 
   function applyDates() {
-    var attr = datefmt === 'iso' ? 'data-iso' : 'data-short';
     dateCells.forEach(function (cell) {
-      cell.textContent = cell.getAttribute(attr);
+      var rest = cell.querySelector('.date-rest');
+      var y = cell.querySelector('.date-y');
+      if (!rest || !y) return;
+      if (datefmt === 'iso') {
+        rest.textContent = cell.getAttribute('data-iso').slice(4);
+        cell.insertBefore(y, rest);  // "2026" + "-07-15"
+      } else {
+        rest.textContent = cell.getAttribute('data-rest');
+        cell.appendChild(y);         // "Jul 15, " + "2026"
+      }
     });
     setPressed(dateBtns, datefmt);
     store('datefmt', datefmt, 'short');
   }
 
+  function applyTimes() {
+    var attr = timefmt === 'h24' ? 'data-24' : 'data-12';
+    timeCells.forEach(function (cell) {
+      cell.textContent = cell.getAttribute(attr);
+    });
+    setPressed(timeBtns, timefmt);
+    store('timefmt', timefmt, 'h12');
+  }
+
   function applyTheme() {
     setPressed(themeBtns, theme);
-    store('theme', theme, 'auto');
-    if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', theme);
+    store('theme', theme, 'dark');
+    if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
   }
 
   Object.keys(themeBtns).forEach(function (k) {
@@ -491,9 +619,12 @@ SITE_JS = """\
   sortBtns.oldest.addEventListener('click', function () { sort = 'oldest'; applySort(); });
   dateBtns.short.addEventListener('click', function () { datefmt = 'short'; applyDates(); });
   dateBtns.iso.addEventListener('click', function () { datefmt = 'iso'; applyDates(); });
+  timeBtns.h12.addEventListener('click', function () { timefmt = 'h12'; applyTimes(); });
+  timeBtns.h24.addEventListener('click', function () { timefmt = 'h24'; applyTimes(); });
 
   applySort();
   applyDates();
+  applyTimes();
   applyTheme();
   controls.hidden = false;
 })();
@@ -534,29 +665,125 @@ INDEX_SCRIPT = """
     reset: document.getElementById('f-reset'),
     body: document.getElementById('f-body'),
     year: document.getElementById('f-year'),
+    loc: document.getElementById('f-loc'),
+    status: document.getElementById('f-status'),
     q: document.getElementById('f-search')
   };
   form.hidden = false;
   form.addEventListener('submit', function (e) { e.preventDefault(); });
 
-  // Body names act as filter shortcuts: clicking one selects that body in
-  // the dropdown. Upgraded from plain text here so the no-JS page keeps
-  // honest static text.
-  rows.forEach(function (r) {
-    var cell = r.cells[1];
+  // Every column offers in-table filter TOGGLES: clicking a value sets
+  // it as that column's filter, clicking the same value again clears it.
+  // All are upgraded from plain text/spans so the no-JS page keeps
+  // honest static content.
+  function toggleFilter(ctrl, val) {
+    ctrl.value = ctrl.value === val ? '' : val;
+    apply();
+  }
+  function shortcutBtn(className, text, onClick) {
     var btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'body-btn';
-    btn.textContent = cell.textContent;
-    btn.setAttribute('aria-label',
-      'Filter by ' + cell.textContent);
-    btn.addEventListener('click', function () {
-      c.body.value = 'b|' + r.getAttribute('data-section') + '|' +
-        r.getAttribute('data-body');
-      apply();
+    btn.className = className;
+    btn.textContent = text;
+    btn.setAttribute('aria-label', 'Toggle filter by ' + text);
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  rows.forEach(function (r) {
+    // body name
+    var bodyCell = r.cells[3];
+    var bodyBtn = shortcutBtn('body-btn', bodyCell.textContent, function () {
+      toggleFilter(c.body, 'b|' + r.getAttribute('data-section') + '|' +
+        r.getAttribute('data-body'));
     });
-    cell.textContent = '';
-    cell.appendChild(btn);
+    bodyCell.textContent = '';
+    bodyCell.appendChild(bodyBtn);
+    // the year within the date
+    var year = r.cells[0].querySelector('.date-y');
+    year.parentNode.replaceChild(
+      shortcutBtn('date-y', year.textContent, function () {
+        toggleFilter(c.year, r.getAttribute('data-year'));
+      }), year);
+    // type and status pills (buttons keep the span's pill classes)
+    var type = r.cells[4].querySelector('.tag');
+    type.parentNode.replaceChild(
+      shortcutBtn(type.className, type.textContent, function () {
+        toggleFilter(c.body, 's|' + r.getAttribute('data-section'));
+      }), type);
+    var status = r.cells[5].querySelector('.tag');
+    status.parentNode.replaceChild(
+      shortcutBtn(status.className, status.textContent, function () {
+        toggleFilter(c.status, r.getAttribute('data-status'));
+      }), status);
+  });
+
+  // Remote pills: the provider-name segment toggles the location filter
+  // (providers count as locations); the link segment stays a plain link
+  document.querySelectorAll('#records-table .remote-name').forEach(function (span) {
+    var prov = span.textContent;
+    span.parentNode.replaceChild(
+      shortcutBtn('remote-name', prov, function () {
+        toggleFilter(c.loc, prov);
+      }), span);
+  });
+
+  // Location cells: the name filters like every other column; a separate
+  // triangle button before names with a known address expands it in place
+  var TRI = '<svg class="tri" viewBox="0 0 24 24" width="18" height="18" ' +
+    'fill="currentColor" aria-hidden="true"><path d="M8 5l8 7-8 7z"/></svg>';
+  var locToggles = [];
+  document.querySelectorAll('#records-table .loc-place').forEach(function (span) {
+    var cell = span.parentNode;
+    var name = span.textContent;
+    var nameBtn = shortcutBtn('loc-name', name, function () {
+      toggleFilter(c.loc, name);
+    });
+    var addrData = span.getAttribute('data-addr');
+    if (addrData) {
+      var tri = document.createElement('button');
+      tri.type = 'button';
+      tri.className = 'loc-tri';
+      tri.innerHTML = TRI;
+      tri.setAttribute('aria-expanded', 'false');
+      tri.setAttribute('aria-label', name + ' address');
+      // grid-rows 0fr -> 1fr animates the reveal; the overflow-hidden
+      // middle layer is what actually clips during the slide
+      var addr = document.createElement('div');
+      addr.className = 'loc-addr';
+      addr.setAttribute('aria-hidden', 'true');
+      var inner = document.createElement('div');
+      inner.className = 'loc-addr-in';
+      var text = document.createElement('div');
+      text.className = 'loc-addr-text';
+      addrData.split('|').forEach(function (line, i) {
+        if (i) text.appendChild(document.createElement('br'));
+        text.appendChild(document.createTextNode(line));
+      });
+      inner.appendChild(text);
+      addr.appendChild(inner);
+      cell.insertBefore(tri, span);
+      cell.appendChild(addr);
+      locToggles.push({ btn: tri, addr: addr });
+      tri.addEventListener('click', function () {
+        var open = tri.getAttribute('aria-expanded') === 'true';
+        // Accordion: opening one collapses whichever other one is open
+        if (!open) {
+          locToggles.forEach(function (t) {
+            if (t.btn !== tri &&
+                t.btn.getAttribute('aria-expanded') === 'true') {
+              t.btn.setAttribute('aria-expanded', 'false');
+              t.addr.classList.remove('open');
+              t.addr.setAttribute('aria-hidden', 'true');
+            }
+          });
+        }
+        tri.setAttribute('aria-expanded', String(!open));
+        addr.classList.toggle('open', !open);
+        addr.setAttribute('aria-hidden', String(open));
+      });
+    }
+    cell.replaceChild(nameBtn, span);
   });
 
   function rowMatchesBody(r, val) {
@@ -570,18 +797,22 @@ INDEX_SCRIPT = """
   }
 
   function apply() {
-    var bodyVal = c.body.value, year = c.year.value;
+    var bodyVal = c.body.value, year = c.year.value, loc = c.loc.value;
+    var status = c.status.value;
     var terms = c.q.value.trim().toLowerCase().split(/\\s+/).filter(Boolean);
     var shownDocs = 0;
     rows.forEach(function (r) {
       var ok = rowMatchesBody(r, bodyVal) &&
                (!year || r.getAttribute('data-year') === year) &&
+               (!loc || r.getAttribute('data-loc') === loc ||
+                r.getAttribute('data-remote') === loc) &&
+               (!status || r.getAttribute('data-status') === status) &&
                terms.every(function (t) {
                  return r.getAttribute('data-search').indexOf(t) !== -1; });
       r.hidden = !ok;
       if (ok) shownDocs += Number(r.getAttribute('data-ndocs'));
     });
-    var filtered = Boolean(bodyVal || year || terms.length);
+    var filtered = Boolean(bodyVal || year || loc || status || terms.length);
     Object.keys(c).forEach(function (k) {
       if (k !== 'reset')
         c[k].classList.toggle('set', Boolean(c[k].value.trim()));
@@ -608,19 +839,23 @@ INDEX_SCRIPT = """
       ? c.body.options[c.body.selectedIndex].text : 'All';
     var q = c.q.value.trim();
     setAll('js-print-generated', 'Generated: ' + timestamp());
-    setAll('js-print-filters', 'Filters: Body = ' + bodyLabel +
-      ', Year = ' + (c.year.value || 'All') +
+    setAll('js-print-filters', 'Filters: Year = ' + (c.year.value || 'All') +
+      ', Location = ' + (c.loc.value || 'All') +
+      ', Body = ' + bodyLabel +
+      ', Status = ' + (c.status.value
+        ? c.status.options[c.status.selectedIndex].text : 'All') +
       (q ? ', Search = \\u201c' + q + '\\u201d' : ''));
   }
 
   window.addEventListener('beforeprint', updatePrintFilters);
 
-  ['body', 'year'].forEach(function (k) {
+  ['body', 'year', 'loc', 'status'].forEach(function (k) {
     c[k].addEventListener('change', apply);
   });
   c.q.addEventListener('input', apply);
   c.reset.addEventListener('click', function () {
-    c.body.value = c.year.value = c.q.value = '';
+    c.body.value = c.year.value = c.loc.value = c.status.value =
+      c.q.value = '';
     apply();
   });
   apply();
@@ -649,61 +884,122 @@ def build_index_page(records: list[Record], docs: list[Document],
                       + "\n".join(opts) + "\n  </optgroup>")
     body_opts = "\n".join(groups)
     year_opts = "\n".join(f'    <option>{y}</option>' for y in years)
+    locations = sorted(
+        {r.before.location for r in ordered
+         if r.before and r.before.location}
+        | {r.before.remote[0] for r in ordered
+           if r.before and r.before.remote})
+    loc_opts = "\n".join(f'    <option>{esc(l)}</option>' for l in locations)
 
+    dash = '<span class="muted">—</span>'
     rows = []
     for rec in ordered:
         pill = SECTIONS[rec.section]["pill"]
         pill_class = "tag-" + rec.section.lower().replace(" ", "-")
         tag = timing_tag(rec.date, today)
         ndocs = (1 if rec.before else 0) + (1 if rec.after else 0)
+        # Meeting time, place, and remote link ride on the agenda/warrant
+        # filename
+        time = rec.before.time if rec.before else None
+        place = rec.before.location if rec.before else None
+        remote = rec.before.remote if rec.before else None
+        time_td = (f'<td class="time" data-24="{time:%H:%M}">'
+                   f'{fmt_time(time)}</td>' if time
+                   else f'<td class="time">{dash}</td>')
+        # The place (with its address for the JS expand toggle when
+        # known), then the remote provider as a link pill beside it
+        loc_html = ""
+        if place:
+            addr = LOCATIONS.get(place)
+            if isinstance(addr, str):  # single-line entries need no tuple
+                addr = (addr,)
+            data = f' data-addr="{esc("|".join(addr))}"' if addr else ""
+            loc_html = (f'<span class="loc-place"{data}>'
+                        f'{esc(place)}</span>')
+        if remote:
+            prov, join_url = remote
+            beside = " beside" if place else ""
+            if join_url:
+                # Two connected segments: the name (a filter toggle once
+                # JS upgrades it) and the join link
+                loc_html += (
+                    f'<span class="tag tag-remote split{beside}">'
+                    f'<span class="remote-name">{esc(prov)}</span>'
+                    f'<a class="remote-link" href="{esc(join_url)}" '
+                    f'aria-label="Join {esc(prov)} meeting">{EXT_ICON}</a>'
+                    f'</span>')
+            else:  # no meeting code in the filename: gray, unlinked
+                loc_html += (f'<span class="tag tag-remote nolink{beside}">'
+                             f'<span class="remote-name">{esc(prov)}</span>'
+                             f'</span>')
+        loc_td = (f'<td class="loc">{loc_html}</td>' if loc_html
+                  else f'<td class="loc">{dash}</td>')
         search = " ".join([
             rec.body.lower(), pill.lower(), rec.date.isoformat(),
             long_date(rec.date).lower(), short_date(rec.date).lower(), tag,
-        ])
+        ] + ([place.lower()] if place else [])
+          + ([remote[0].lower()] if remote else []))
         rows.append(
             f'<tr data-section="{esc(rec.section)}" data-body="{esc(rec.body)}" '
-            f'data-year="{rec.date.year}" data-ndocs="{ndocs}" '
-            f'data-search="{esc(search)}">\n'
+            f'data-year="{rec.date.year}" data-loc="{esc(place or "")}" '
+            f'data-remote="{esc(remote[0]) if remote else ""}" '
+            f'data-status="{tag}" '
+            f'data-ndocs="{ndocs}" data-search="{esc(search)}">\n'
             f'<th scope="row" data-iso="{rec.date.isoformat()}">'
-            f'{short_date(rec.date)}</th>\n'
+            f'<span class="date-rest">{rec.date:%b} {rec.date.day}, </span>'
+            f'<span class="date-y">{rec.date.year}</span></th>\n'
+            f'{time_td}\n'
+            f'{loc_td}\n'
             f'<td>{esc(rec.body)}</td>\n'
-            f'<td class="tags center"><span class="tag tag-section {pill_class}">{esc(pill)}</span></td>\n'
-            f'<td class="tags center"><span class="tag tag-{tag}">{tag.capitalize()}</span></td>\n'
+            f'<td class="center"><span class="tag tag-section {pill_class}">{esc(pill)}</span></td>\n'
+            f'<td class="center"><span class="tag tag-{tag}">{tag.capitalize()}</span></td>\n'
             f'<td class="doc">{doc_cell(rec.before)}</td>\n'
             f'<td class="doc">{doc_cell(rec.after)}</td>\n</tr>'
         )
 
     n_docs = len(docs)
-    footer_lines = f"""<p class="print-count js-print-count">{n_docs} of {n_docs} records shown</p>
+    footer_lines = f"""<p class="print-count"><strong>{esc(page_title)}</strong> &bull; <span class="js-print-count">{n_docs} of {n_docs} records shown</span></p>
 <p><span class="js-print-generated">Generated just now</span> &bull; 
-<span class="js-print-filters">Filters: Body = All, Year = All</span></p>
+<span class="js-print-filters">Filters: Year = All, Location = All, Body = All, Status = All</span></p>
 <p>{PRINT_CONTACT_LINE}</p>"""
     body = f"""<h1>{page_title}</h1>
 
 <form class="filters" id="filters" hidden>
   <button type="button" id="f-reset" disabled>{RESET_ICON}Reset</button>
-  <select id="f-body" aria-label="Filter by body">
-    <option value="">All bodies</option>
-{body_opts}
-  </select>
   <select id="f-year" aria-label="Filter by year">
     <option value="">All years</option>
 {year_opts}
   </select>
+  <select id="f-loc" aria-label="Filter by location">
+    <option value="">All locations</option>
+{loc_opts}
+  </select>
+  <select id="f-body" aria-label="Filter by body">
+    <option value="">All bodies</option>
+{body_opts}
+  </select>
+  <select id="f-status" aria-label="Filter by status">
+    <option value="">All statuses</option>
+    <option value="upcoming">Upcoming</option>
+    <option value="today">Today</option>
+    <option value="past">Past</option>
+  </select>
   <input type="search" id="f-search" placeholder="Search" aria-label="Search records">
 </form>
 
+<div class="table-scroll">
 <table id="records-table" class="records">
 <thead>
-<tr><th scope="col" class="date-col">Date</th><th scope="col">Body</th><th scope="col" class="center">Type</th><th scope="col" class="center">Status</th><th scope="col" class="center doc">Agenda/<br>Warrant</th><th scope="col" class="center doc">Minutes/<br>Results</th></tr>
+<tr><th scope="col" class="date-col">Date</th><th scope="col" class="time">Time</th><th scope="col" class="loc">Location</th><th scope="col">Body</th><th scope="col" class="center">Type</th><th scope="col" class="center">Status</th><th scope="col" class="center doc">Agenda/<br>Warrant</th><th scope="col" class="center doc">Minutes/<br>Results</th></tr>
 </thead>
 <tbody>
 {chr(10).join(rows)}
 </tbody>
 <tfoot class="print-only">
-<tr><td colspan="6"><div class="print-spacer"></div></td></tr>
+<tr><td colspan="8"><div class="print-spacer"></div></td></tr>
 </tfoot>
 </table>
+</div>
 <p class="count" id="count-line">{n_docs} of {n_docs} records shown</p>
 <div class="print-footer">
 {footer_lines}
