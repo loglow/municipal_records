@@ -254,10 +254,13 @@ def body_sort_key(section: str, body: str):
 def pdf_info(path: Path) -> tuple[bool, int | None]:
     """One pass over a PDF: (has_text_layer, page_count).
 
-    Text layer: image-only scans embed no fonts / text operators. Pages:
-    count page objects (raw plus inside Flate-compressed object streams,
-    where modern PDFs often keep them), falling back to the page tree's
-    /Count. Both are heuristics; page count returns None when unsure.
+    Text layer: look for actual text-showing operators (Tj/TJ preceded by
+    a string close, in raw or Flate-compressed content streams) — merely
+    embedding a font is not enough, since image-only scans sometimes
+    carry a stray font object. Pages: count page objects (raw plus inside
+    compressed object streams, where modern PDFs often keep them),
+    falling back to the page tree's /Count. Both are heuristics; page
+    count returns None when unsure.
     """
     data = path.read_bytes()
     chunks = [data]
@@ -266,12 +269,17 @@ def pdf_info(path: Path) -> tuple[bool, int | None]:
         end = data.find(b"endstream", start)
         if end == -1:
             continue
-        try:
-            chunks.append(zlib.decompress(data[start:end].rstrip(b"\r\n")))
-        except zlib.error:
-            continue
-    has_text = b"/Font" in data or any(
-        b"/Font" in c or b"Tj" in c or b"TJ" in c for c in chunks[1:])
+        raw = data[start:end].rstrip(b"\r\n")
+        # wbits 47 auto-detects zlib/gzip framing; -15 handles the raw
+        # deflate some producers emit
+        for wbits in (47, -15):
+            try:
+                chunks.append(zlib.decompressobj(wbits).decompress(raw))
+                break
+            except zlib.error:
+                continue
+    text_op = re.compile(rb"[)>\]]\s*T[jJ]")
+    has_text = any(text_op.search(c) for c in chunks)
     pages = sum(len(re.findall(rb"/Type\s*/Page(?!s)", c)) for c in chunks)
     if pages == 0:
         counts = [int(n) for c in chunks
@@ -407,22 +415,59 @@ def scan(warnings: list[str]) -> list[Document]:
 
 def merge(docs: list[Document], warnings: list[str]) -> list[Record]:
     """Fold documents into (section, body, date) records — one before-doc
-    and one after-doc per record; duplicates warn and are ignored."""
-    records: dict[tuple[str, str, datetime.date], Record] = {}
+    and one after-doc per record; duplicates warn and are ignored.
+
+    A body can meet twice in one day: two before-docs with DISTINCT
+    filename times are two meetings, each its own record. The after-docs
+    then carry the meeting time too ("2026-01-28 1800.pdf") to say which
+    meeting they belong to — an after-doc that cannot be paired gets its
+    own record and a warning, so it stays visible either way."""
+    buckets: dict[tuple[str, str, datetime.date], list[Document]] = {}
     for doc in docs:
-        key = (doc.section, doc.body, doc.date)
-        rec = records.setdefault(
-            key, Record(section=doc.section, body=doc.body, date=doc.date))
-        existing = getattr(rec, doc.role)
-        if existing is not None:
-            warnings.append(
-                f"Two '{doc.role}' documents for {doc.body} "
-                f"{doc.date.isoformat()} — keeping "
-                f"{existing.source.relative_to(ROOT)}, ignoring "
-                f"{doc.source.relative_to(ROOT)}")
+        buckets.setdefault((doc.section, doc.body, doc.date),
+                           []).append(doc)
+    records = []
+    for (section, body, date), group in buckets.items():
+        befores = [d for d in group if d.role == "before"]
+        slots = {d.time for d in befores}
+        if len(befores) > 1 and len(slots) == len(befores) \
+                and None not in slots:
+            by_time = {b.time: Record(section=section, body=body,
+                                      date=date, before=b)
+                       for b in befores}
+            for a in (d for d in group if d.role == "after"):
+                rec = by_time.get(a.time)
+                if rec is None:
+                    warnings.append(
+                        f"{len(befores)} meetings for {body} "
+                        f"{date.isoformat()} — this after-doc needs a "
+                        f"time matching one of them: "
+                        f"{a.source.relative_to(ROOT)}")
+                    records.append(Record(section=section, body=body,
+                                          date=date, after=a))
+                elif rec.after is not None:
+                    warnings.append(
+                        f"Two 'after' documents for {body} "
+                        f"{date.isoformat()} — keeping "
+                        f"{rec.after.source.relative_to(ROOT)}, ignoring "
+                        f"{a.source.relative_to(ROOT)}")
+                else:
+                    rec.after = a
+            records.extend(by_time.values())
             continue
-        setattr(rec, doc.role, doc)
-    return list(records.values())
+        rec = Record(section=section, body=body, date=date)
+        for doc in group:
+            existing = getattr(rec, doc.role)
+            if existing is not None:
+                warnings.append(
+                    f"Two '{doc.role}' documents for {doc.body} "
+                    f"{doc.date.isoformat()} — keeping "
+                    f"{existing.source.relative_to(ROOT)}, ignoring "
+                    f"{doc.source.relative_to(ROOT)}")
+                continue
+            setattr(rec, doc.role, doc)
+        records.append(rec)
+    return records
 
 
 # ---------------------------------------------------------------------------
@@ -867,8 +912,12 @@ def build_index_page(records: list[Record], docs: list[Document],
                      sections_present: list[str],
                      today: datetime.date) -> str:
     page_title = "Meetings & elections"
-    ordered = sorted(records, key=lambda r: (r.date, r.body.lower()),
-                     reverse=True)
+    ordered = sorted(
+        records,
+        key=lambda r: (r.date, r.body.lower(),
+                       (r.before.time if r.before and r.before.time
+                        else datetime.time.min)),
+        reverse=True)
     years = sorted({r.date.year for r in ordered}, reverse=True)
 
     groups = []
