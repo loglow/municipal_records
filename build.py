@@ -9,7 +9,10 @@ dated record entries, and emits a deliberately single-page static site into
 site/ (gitignored, disposable), linking directly to the PDFs in Records/ —
 documents are never copied:
 
-    site/index.html             the whole site: one searchable records table
+    site/index.html             the whole site: a searchable records
+                                table and a month-grid calendar view of
+                                the same records (View toggle in the
+                                header; the filters govern both)
     site/site.js                display-preference script
     site/style.css              copied from the repo-root source
     site/Records -> ../Records  symlink so document links resolve
@@ -32,6 +35,7 @@ Pure standard library. Idempotent. Prints a build report to stdout.
 
 from __future__ import annotations
 
+import calendar
 import datetime
 import hashlib
 import html
@@ -528,6 +532,13 @@ def page(*, title: str, body: str) -> str:
         <button type="button" id="theme-light" aria-pressed="false">Light</button>
       </div>
     </div>
+    <div class="control" id="view-control">
+      <span class="control-label" id="view-label">View</span>
+      <div class="toggle" role="group" aria-labelledby="view-label">
+        <button type="button" id="view-table-btn" aria-pressed="true">Table</button>
+        <button type="button" id="view-cal-btn" aria-pressed="false">Calendar</button>
+      </div>
+    </div>
   </div>
 </div>
 </header>
@@ -570,13 +581,21 @@ SITE_JS = """\
     h12: document.getElementById('time-12'),
     h24: document.getElementById('time-24')
   };
+  var viewBtns = {
+    table: document.getElementById('view-table-btn'),
+    cal: document.getElementById('view-cal-btn')
+  };
+  var viewTable = document.getElementById('view-table');
+  var viewCal = document.getElementById('view-cal');
 
   var theme = 'dark', sort = 'newest', datefmt = 'short', timefmt = 'h12';
+  var view = 'table';
   try {
     if (localStorage.getItem('theme') === 'light') theme = 'light';
     if (localStorage.getItem('sort') === 'oldest') sort = 'oldest';
     if (localStorage.getItem('datefmt') === 'iso') datefmt = 'iso';
     if (localStorage.getItem('timefmt') === 'h24') timefmt = 'h24';
+    if (localStorage.getItem('view') === 'cal') view = 'cal';
   } catch (e) {}
 
   var sortables = [];
@@ -657,9 +676,24 @@ SITE_JS = """\
     }
   }
 
+  function applyView() {
+    viewTable.hidden = view === 'cal';
+    viewCal.hidden = view !== 'cal';
+    setPressed(viewBtns, view);
+    store('view', view, 'table');
+  }
+
   Object.keys(themeBtns).forEach(function (k) {
     themeBtns[k].addEventListener('click', function () { theme = k; applyTheme(); });
   });
+  if (viewTable && viewCal) {
+    Object.keys(viewBtns).forEach(function (k) {
+      viewBtns[k].addEventListener('click', function () { view = k; applyView(); });
+    });
+    applyView();
+  } else {
+    document.getElementById('view-control').remove();
+  }
   sortBtns.newest.addEventListener('click', function () { sort = 'newest'; applySort(); });
   sortBtns.oldest.addEventListener('click', function () { sort = 'oldest'; applySort(); });
   dateBtns.short.addEventListener('click', function () { datefmt = 'short'; applyDates(); });
@@ -672,6 +706,30 @@ SITE_JS = """\
   applyTimes();
   applyTheme();
   controls.hidden = false;
+
+  // The controls wrap under the wordmark (with a divider) the moment
+  // they would no longer fit beside it — measured, not a breakpoint,
+  // so adding a control can never desynchronize the divider
+  var headerEl = document.querySelector('header');
+  var wrapEl = controls.parentNode;
+  var nameEl = wrapEl.querySelector('.site-name');
+  function fitControls() {
+    var kids = Array.prototype.slice.call(controls.children);
+    var cGap = parseFloat(getComputedStyle(controls).columnGap) || 0;
+    var w = kids.reduce(function (sum, k) { return sum + k.offsetWidth; },
+                        cGap * (kids.length - 1));
+    var st = getComputedStyle(wrapEl);
+    var avail = wrapEl.clientWidth - parseFloat(st.paddingLeft)
+      - parseFloat(st.paddingRight);
+    var gap = parseFloat(st.columnGap) || 0;
+    headerEl.classList.toggle('wrapped',
+      avail < nameEl.offsetWidth + gap + w);
+  }
+  window.addEventListener('resize', fitControls);
+  if (window.ResizeObserver) new ResizeObserver(fitControls).observe(wrapEl);
+  if (document.fonts && document.fonts.ready)
+    document.fonts.ready.then(fitControls);
+  fitControls();
 })();
 """
 
@@ -706,6 +764,12 @@ INDEX_SCRIPT = """
     document.querySelectorAll('#records-table tbody tr'));
   var total = rows.reduce(function (n, r) {
     return n + Number(r.getAttribute('data-ndocs')); }, 0);
+  // Calendar chips mirror their table rows (shared data-rec) — the
+  // filters compute row visibility once and the chips follow it
+  var rowByRec = {};
+  rows.forEach(function (r) { rowByRec[r.getAttribute('data-rec')] = r; });
+  var calEvents = Array.prototype.slice.call(
+    document.querySelectorAll('#view-cal .cal-ev'));
   var c = {
     reset: document.getElementById('f-reset'),
     body: document.getElementById('f-body'),
@@ -831,6 +895,37 @@ INDEX_SCRIPT = """
     cell.replaceChild(nameBtn, span);
   });
 
+  // Calendar chips: body, location, and provider names are the same
+  // filter toggles the table's cells offer
+  calEvents.forEach(function (ev) {
+    var r = rowByRec[ev.getAttribute('data-rec')];
+    var name = ev.querySelector('.cal-ev-name');
+    if (name) {
+      var nb = shortcutBtn('chip-btn', name.textContent, function () {
+        toggleFilter(c.body, 'b|' + r.getAttribute('data-section') + '|' +
+          r.getAttribute('data-body'));
+      });
+      name.textContent = '';
+      name.appendChild(nb);
+    }
+    var loc = ev.querySelector('.cal-ev-loc');
+    if (loc) {
+      var lb = shortcutBtn('chip-btn', loc.textContent, function () {
+        toggleFilter(c.loc, r.getAttribute('data-loc'));
+      });
+      loc.textContent = '';
+      loc.appendChild(lb);
+    }
+    var prov = ev.querySelector('.cal-ev-prov');
+    if (prov) {
+      var pb = shortcutBtn('chip-btn', prov.textContent, function () {
+        toggleFilter(c.loc, r.getAttribute('data-remote'));
+      });
+      prov.textContent = '';
+      prov.appendChild(pb);
+    }
+  });
+
   function rowMatchesBody(r, val) {
     if (!val) return true;
     var sep = val.indexOf('|');
@@ -856,6 +951,10 @@ INDEX_SCRIPT = """
                  return r.getAttribute('data-search').indexOf(t) !== -1; });
       r.hidden = !ok;
       if (ok) shownDocs += Number(r.getAttribute('data-ndocs'));
+    });
+    calEvents.forEach(function (ev) {
+      ev.classList.toggle('cal-ev-dim',
+        rowByRec[ev.getAttribute('data-rec')].hidden);
     });
     var filtered = Boolean(bodyVal || year || loc || status || terms.length);
     Object.keys(c).forEach(function (k) {
@@ -904,8 +1003,198 @@ INDEX_SCRIPT = """
     apply();
   });
   apply();
+
+  // Calendar month navigation. Only months containing records exist,
+  // so prev/next also step across gaps in the archive; the dropdown
+  // doubles as the month title.
+  var months = Array.prototype.slice.call(
+    document.querySelectorAll('.cal-month'));
+  if (months.length) {
+    var now = new Date();
+    var cur = now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0');
+    var startIdx = months.length - 1;
+    months.forEach(function (m, i) {
+      if (m.getAttribute('data-month') <= cur) startIdx = i;
+    });
+    var idx = startIdx;
+    var first = document.getElementById('cal-first');
+    var prev = document.getElementById('cal-prev');
+    var next = document.getElementById('cal-next');
+    var last = document.getElementById('cal-last');
+    var todayBtn = document.getElementById('cal-today');
+    var monthSel = document.getElementById('cal-month-sel');
+    var yearSel = document.getElementById('cal-year-sel');
+    var viewCal = document.getElementById('view-cal');
+    var navEl = document.querySelector('.cal-nav');
+    var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May',
+      'June', 'July', 'August', 'September', 'October', 'November',
+      'December'];
+    function showMonth() {
+      months.forEach(function (m, i) { m.hidden = i !== idx; });
+      var dm = months[idx].getAttribute('data-month');
+      var year = dm.slice(0, 4);
+      yearSel.value = year;
+      // the month list holds only this year's months with records
+      monthSel.textContent = '';
+      months.forEach(function (m) {
+        var v = m.getAttribute('data-month');
+        if (v.slice(0, 4) !== year) return;
+        var o = document.createElement('option');
+        o.value = v;
+        o.textContent = MONTH_NAMES[parseInt(v.slice(5), 10) - 1];
+        monthSel.appendChild(o);
+      });
+      monthSel.value = dm;
+      first.disabled = prev.disabled = idx === 0;
+      last.disabled = next.disabled = idx === months.length - 1;
+      todayBtn.disabled = idx === startIdx;
+      // Today lights up when away; the month picker for any month that
+      // is not the current one (same name in another year is still a
+      // different month); the year picker only when the year differs
+      navEl.classList.toggle('cal-away', idx !== startIdx);
+      var cur = months[startIdx].getAttribute('data-month');
+      monthSel.classList.toggle('away', dm !== cur);
+      yearSel.classList.toggle('away', dm.slice(0, 4) !== cur.slice(0, 4));
+    }
+    prev.addEventListener('click', function () {
+      if (idx > 0) { idx--; showMonth(); } });
+    next.addEventListener('click', function () {
+      if (idx < months.length - 1) { idx++; showMonth(); } });
+    first.addEventListener('click', function () {
+      idx = 0; showMonth(); });
+    last.addEventListener('click', function () {
+      idx = months.length - 1; showMonth(); });
+    todayBtn.addEventListener('click', function () {
+      idx = startIdx; showMonth(); });
+    monthSel.addEventListener('change', function () {
+      months.forEach(function (m, i) {
+        if (m.getAttribute('data-month') === monthSel.value) idx = i;
+      });
+      showMonth();
+    });
+    yearSel.addEventListener('change', function () {
+      // jump to the chosen year's month nearest the current one
+      var curM = parseInt(
+        months[idx].getAttribute('data-month').slice(5), 10);
+      var best = idx, bestD = 99;
+      months.forEach(function (m, i) {
+        var v = m.getAttribute('data-month');
+        if (v.slice(0, 4) !== yearSel.value) return;
+        var d = Math.abs(parseInt(v.slice(5), 10) - curM);
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      idx = best;
+      showMonth();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (viewCal.hidden ||
+          /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+      if (e.key === 'ArrowLeft') prev.click();
+      if (e.key === 'ArrowRight') next.click();
+    });
+    showMonth();
+  }
 })();
 """
+
+
+def cal_event(rec: Record, idx: int) -> str:
+    """One calendar entry, everything always visible: time on top, the
+    body name, a letter-link per existing document, then the location
+    (italic) and the remote link on their own lines."""
+    slug = rec.section.lower().replace(" ", "-")
+    links = []
+    for doc in (rec.before, rec.after):
+        if doc:
+            links.append(
+                f'<a class="cal-ev-doc" href="{doc.url()}" '
+                f'title="{esc(doc.label)}" aria-label="{esc(rec.body)} '
+                f'{esc(doc.label.lower())}, {esc(long_date(rec.date))}">'
+                f'{doc.label[0]}</a>')
+    time = rec.before.time if rec.before else None
+    time_html = (f'<div class="cal-ev-time" data-24="{time:%H:%M}">'
+                 f'{fmt_time(time)}</div>' if time else "")
+    place = rec.before.location if rec.before else None
+    remote = rec.before.remote if rec.before else None
+    place_html = (f'<div class="cal-ev-loc">{esc(place)}</div>'
+                  if place else "")
+    remote_html = ""
+    if remote:
+        prov, join_url = remote
+        remote_html = (f'<div class="cal-ev-remote">'
+                       f'<span class="cal-ev-prov">{esc(prov)}</span>'
+                       + (f' <a class="cal-ev-join" href="{esc(join_url)}" '
+                          f'aria-label="Join {esc(prov)} meeting">'
+                          f'{EXT_ICON}</a>' if join_url else "")
+                       + '</div>')
+    aria = f"{rec.body}, {long_date(rec.date)}"
+    return (f'<div class="cal-ev cal-ev-{slug}" data-rec="{idx}">'
+            f'{time_html}<div class="cal-ev-name" title="{esc(aria)}">'
+            f'{esc(rec.body)}</div>'
+            f'<span class="cal-ev-links">{"".join(links)}</span>'
+            f'{place_html}{remote_html}</div>')
+
+
+def build_calendar_html(ordered: list[Record],
+                        today: datetime.date) -> str:
+    """The same records as a month grid — only months that have records
+    exist; the nav skips the gaps. Events mirror the table rows (data-rec
+    pairs them) so the filters govern both views."""
+    by_date: dict[datetime.date, list] = {}
+    months: dict[tuple[int, int], int] = {}
+    for i, rec in enumerate(ordered):
+        slot = (rec.before.time if rec.before and rec.before.time
+                else datetime.time.max)  # timeless records sink last
+        by_date.setdefault(rec.date, []).append(
+            (slot, rec.body.lower(), cal_event(rec, i)))
+        months[(rec.date.year, rec.date.month)] = 0
+    grid = calendar.Calendar(firstweekday=6)  # Sunday first
+    dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    out = []
+    for y, m in sorted(months):
+        cells = [f'<div class="cal-dow">{d}</div>' for d in dows]
+        for day in grid.itermonthdates(y, m):
+            classes = ["cal-day"]
+            if day.month != m:
+                classes.append("is-out")
+            if day == today and day.month == m:
+                classes.append("is-today")
+            evs = by_date.get(day, []) if day.month == m else []
+            cells.append(
+                f'<div class="{" ".join(classes)}">'
+                f'<p class="cal-daynum">{day.day}</p>'
+                + "".join(h for *_, h in sorted(evs)) + "</div>")
+        out.append(
+            f'<div class="cal-month" data-month="{y}-{m:02d}" hidden>'
+            f'<div class="cal">{"".join(cells)}</div></div>')
+    # Separate month and year pickers: the month list never exceeds
+    # twelve however many years the archive grows to. The month options
+    # are per-year, so the script fills them in.
+    year_opts = "\n".join(
+        f'    <option>{y}</option>'
+        for y in sorted({y for y, _ in months}, reverse=True))
+    prev_icon = ('<svg viewBox="0 0 24 24" width="16" height="16" '
+                 'fill="none" stroke="currentColor" stroke-width="2.5" '
+                 'stroke-linecap="round" stroke-linejoin="round" '
+                 'aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>')
+    next_icon = prev_icon.replace('M14 6l-6 6 6 6', 'M10 6l6 6-6 6')
+    first_icon = prev_icon.replace('M14 6l-6 6 6 6',
+                                   'M12 6l-6 6 6 6M19 6l-6 6 6 6')
+    last_icon = prev_icon.replace('M14 6l-6 6 6 6',
+                                  'M5 6l6 6-6 6M12 6l6 6-6 6')
+    return f"""<div class="cal-nav">
+  <button type="button" class="cal-arrow" id="cal-first" aria-label="Earliest month">{first_icon}</button>
+  <button type="button" class="cal-arrow" id="cal-prev" aria-label="Previous month">{prev_icon}</button>
+  <button type="button" id="cal-today">{RESET_ICON}Today</button>
+  <select id="cal-month-sel" aria-label="Go to month"></select>
+  <select id="cal-year-sel" aria-label="Go to year">
+{year_opts}
+  </select>
+  <button type="button" class="cal-arrow" id="cal-next" aria-label="Next month">{next_icon}</button>
+  <button type="button" class="cal-arrow" id="cal-last" aria-label="Latest month">{last_icon}</button>
+</div>
+{"".join(out)}"""
 
 
 def build_index_page(records: list[Record], docs: list[Document],
@@ -942,7 +1231,7 @@ def build_index_page(records: list[Record], docs: list[Document],
 
     dash = '<span class="muted">—</span>'
     rows = []
-    for rec in ordered:
+    for i, rec in enumerate(ordered):
         pill = SECTIONS[rec.section]["pill"]
         pill_class = "tag-" + rec.section.lower().replace(" ", "-")
         tag = timing_tag(rec.date, today)
@@ -989,7 +1278,8 @@ def build_index_page(records: list[Record], docs: list[Document],
         ] + ([place.lower()] if place else [])
           + ([remote[0].lower()] if remote else []))
         rows.append(
-            f'<tr data-section="{esc(rec.section)}" data-body="{esc(rec.body)}" '
+            f'<tr data-rec="{i}" '
+            f'data-section="{esc(rec.section)}" data-body="{esc(rec.body)}" '
             f'data-year="{rec.date.year}" data-loc="{esc(place or "")}" '
             f'data-remote="{esc(remote[0]) if remote else ""}" '
             f'data-status="{tag}" '
@@ -1036,6 +1326,7 @@ def build_index_page(records: list[Record], docs: list[Document],
   <input type="search" id="f-search" placeholder="Search" aria-label="Search records">
 </form>
 
+<div id="view-table">
 <div class="table-scroll">
 <table id="records-table" class="records">
 <thead>
@@ -1048,6 +1339,10 @@ def build_index_page(records: list[Record], docs: list[Document],
 <tr><td colspan="8"><div class="print-spacer"></div></td></tr>
 </tfoot>
 </table>
+</div>
+</div>
+<div id="view-cal" hidden>
+{build_calendar_html(ordered, today)}
 </div>
 <p class="count" id="count-line">{n_docs} of {n_docs} records shown</p>
 <div class="print-footer">

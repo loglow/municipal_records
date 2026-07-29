@@ -127,7 +127,8 @@ are held for manual filing.
 | Filename-vs-document audit | `audit.py` (`VERIFIED` list at the top) |
 | Deployment | `.github/workflows/deploy.yml` |
 
-The generated site is one page: a filterable, searchable table of every
-record, with a print stylesheet that produces a clean black-and-white
-listing stamped with the date, active filters, and the clerk's contact
-information.
+The generated site is one page with two views of the same records — a
+filterable, searchable table and a month-grid calendar (the View toggle
+in the header switches; the filters govern both). The print stylesheet
+always produces the table: a clean black-and-white listing stamped with
+the date, active filters, and the clerk's contact information.
