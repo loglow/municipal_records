@@ -25,7 +25,10 @@ Records/Elections/State Election/Results/2026-11-03.pdf
 ```
 
 - **Folder names are display names.** A new board or election type is just a
-  new folder — no code changes.
+  new folder — no code changes. Write folder names out in full; when a
+  name is too long for the page, add a shorter display override to the
+  `DISPLAY_NAMES` table in `build.py` (the folder — and its URLs —
+  keeps the full name; only what the page shows changes).
 - **Filenames start with the date** of the meeting or event, `YYYY-MM-DD.pdf`.
   Agendas and warrants may also carry the meeting time and place, either or
   both: `YYYY-MM-DD HHMM Location.pdf` (24-hour time; the location may
@@ -34,7 +37,7 @@ Records/Elections/State Election/Results/2026-11-03.pdf
   appears as a pill linking to the meeting: hybrid meetings look like
   `2026-01-12 1800 Town Hall, Zoom 82383447080.pdf`, remote-only meetings
   like `2026-01-12 1800 Zoom 82383447080.pdf`. A provider name alone (no
-  meeting code) shows as the same pill, gray and unlinked.
+  meeting code) shows as the same pill, just unlinked.
   Known providers (and their link formats) are the `REMOTE_PROVIDERS`
   table in `build.py`. Locations listed in the `LOCATIONS` table in
   `build.py` are expandable on the site to show their address. Anything
@@ -122,7 +125,7 @@ are held for manual filing.
 | What | Where |
 | --- | --- |
 | Documents (the archive itself) | `Records/` |
-| Generator, taxonomy, clerk contact info, meeting-place addresses | `build.py` (`SECTIONS`, `KINDS`, `CONTACT`, `LOCATIONS` at the top) |
+| Generator, taxonomy, clerk contact info, meeting-place addresses, display-name overrides | `build.py` (`SECTIONS`, `KINDS`, `CONTACT`, `LOCATIONS`, `DISPLAY_NAMES` at the top) |
 | All styling, screen and print | `style.css` |
 | Filename-vs-document audit | `audit.py` (`VERIFIED` list at the top) |
 | Deployment | `.github/workflows/deploy.yml` |

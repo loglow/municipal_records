@@ -146,29 +146,83 @@ def location_probes(name: str) -> set[str]:
 # How documents actually write each body folder's name — beyond the
 # folder name itself, which is probed automatically.
 BODY_ALIASES: dict[str, tuple[str, ...]] = {
-    "Board of Health": ("boh",),
-    "COA Advisory Board": ("council on aging",),
-    "FHD Board": ("foothills health district",),
-    "FHD Executive Committee": ("executive committee", "exec. cttee",
-                                "exec cttee"),
-    "FHD Personnel Committee": ("personnel committee",),
-    "Finance Committee": ("fincom",),
-    "HPHP Coalition": ("public health preparedness coalition",),
-    "HRS Committee": ("hampshire regional",),
-    "HRS Finance Subcommittee": ("finance sub-committee",
-                                 "finance subcommittee"),
-    "HRS Policy Subcommittee": ("policy subcommittee",),
-    "Library Board of Trustees": ("board of trustees",),
-    "Town Admin. Search Comm.": ("town administrator search committee",
-                                 "search committee", "town administrator"),
-    "WES Committee": ("elementary school committee",
-                      "westhampton school committee"),
-    "Annual Town Caucus": ("caucus",),
-    "Annual Town Election": ("election",),
-    "Special Town Election": ("election",),
-    "State Election": ("state election", "election", "statewide"),
-    "State Primary": ("primary",),
-    "Presidential Primary": ("presidential", "primary"),
+    "Board of Health": (
+        "boh",
+    ),
+    "Council on Aging Advisory Board": (
+        "council on aging",
+    ),
+    "Foothills Health District Board": (
+        "foothills health district",
+    ),
+    "Foothills Health District Executive Committee": (
+        "executive committee",
+        "exec. cttee",
+        "exec cttee",
+    ),
+    "Foothills Health District Personnel Committee": (
+        "personnel committee",
+    ),
+    "Finance Committee": (
+        "fincom",
+    ),
+    "Hampshire Public Health Preparedness Coalition": (
+        "public health preparedness coalition",
+    ),
+    "Hampshire Regional School Committee": (
+        "hampshire regional",
+    ),
+    "Hampshire Regional School Finance Subcommittee": (
+        "finance sub-committee",
+        "finance subcommittee",
+    ),
+    "Hampshire Regional School Policy Subcommittee": (
+        "policy subcommittee",
+    ),
+    "Library Board of Trustees": (
+        "board of trustees",
+    ),
+    "Public Safety Complex Committee": (
+        "westhampton safety complex",
+        "public safety",
+        "building committee meeting",
+        "building committee",
+        "public safety complex review committee",
+    ),
+    "Property and Energy Committee": (
+        "property and energy",
+        "energy assessment"
+    ),
+    "Town Administrator Search Committee": (
+        "town administrator search committee",
+        "search committee",
+        "town administrator",
+    ),
+    "Westhampton Elementary School Committee": (
+        "elementary school committee",
+        "westhampton school committee",
+    ),
+    "Annual Town Caucus": (
+        "caucus",
+    ),
+    "Annual Town Election": (
+        "election",
+    ),
+    "Special Town Election": (
+        "election",
+    ),
+    "State Election": (
+        "state election",
+        "election",
+        "statewide",
+    ),
+    "State Primary": (
+        "primary",
+    ),
+    "Presidential Primary": (
+        "presidential",
+        "primary",
+    ),
 }
 
 
@@ -191,7 +245,7 @@ VERIFIED: dict[str, str] = {
         "Zoom code incorrect in OCR; the filename code is correct",
     "Boards/Selectboard/Agendas/2026-06-15 1900 Town Hall, Zoom 82598611151.pdf":
         "Zoom code unreadable in OCR; the filename code is correct",
-    "Boards/HPHP Coalition/Agendas/2026-06-16 1130 Zoom.pdf":
+    "Boards/Hampshire Public Health Preparedness Coalition/Agendas/2026-06-16 1130 Zoom.pdf":
         "no Zoom code is deliberate; the agenda states no code or link",
     "Boards/Selectboard/Agendas/2026-01-28 1800 Town Hall, Zoom 82598611151.pdf":
         "date changed due to winter storm; backup date does not state year",
@@ -199,12 +253,44 @@ VERIFIED: dict[str, str] = {
         "agenda for two different boards; filed in both places",
     "Boards/Selectboard/Minutes/2026-04-15.pdf":
         "agenda for two different boards; filed in both places",
-    "Boards/Town Admin. Search Comm./Minutes/2026-07-08.pdf":
+    "Boards/Town Administrator Search Committee/Minutes/2026-07-08.pdf":
         "minutes do not contain any date; date verified by clerk",
-    "Boards/HRS Committee/Agendas/2026-01-05 1800 HRHS Library.pdf":
+    "Boards/Hampshire Regional School Committee/Agendas/2026-01-05 1800 HRHS Library.pdf":
         "agenda for two different boards; filed in both places",
-    "Boards/WES Committee/Agendas/2026-01-05 1800 HRHS Library.pdf":
+    "Boards/Westhampton Elementary School Committee/Agendas/2026-01-05 1800 HRHS Library.pdf":
         "agenda for two different boards; filed in both places",
+    "Boards/Council on Aging Advisory Board/Minutes/2022-12-15.pdf":
+        "verified COA minutes",
+    "Boards/Zoning Board of Appeals/Minutes/2017-08-08.pdf":
+        "verified ZBA minutes",
+    "Boards/Cultural Council/Minutes/2013-12-03.pdf":
+        "verified Cultural Council",
+    "Boards/Board of Health/Minutes/2017-02-02.pdf":
+        "verified date",
+    "Boards/Board of Health/Minutes/2017-11-02.pdf":
+        "verified date",
+    "Boards/Board of Health/Minutes/2020-04-21.pdf":
+        "verified date",
+    "Boards/Board of Health/Minutes/2020-06-25.pdf":
+        "verified date",
+    "Boards/Public Safety Complex Committee/Minutes/2016-07-20.pdf":
+        "verified board",
+    "Boards/Public Safety Complex Committee/Minutes/2016-08-24.pdf":
+        "verified board",
+    "Boards/Public Safety Complex Committee/Minutes/2017-05-22.pdf":
+        "verified board",
+    "Boards/Public Safety Complex Committee/Minutes/2017-07-17.pdf":
+        "verified board",
+    "Boards/Public Safety Complex Committee/Minutes/2017-07-31.pdf":
+        "verified board",
+    "Boards/Public Safety Complex Committee/Minutes/2018-03-13.pdf":
+        "verified date from other records",
+    "Boards/Public Safety Complex Committee/Minutes/2018-03-26.pdf":
+        "verified year",
+    "Boards/Zoning Bylaw Review Committee/Minutes/2018-02-12.pdf":
+        "suspected board",
+    "Boards/Public Safety Complex Committee/Agendas/2017-05-08 1800 Town Hall.pdf":
+        "verified handwritten time",
 }
 
 # ---------------------------------------------------------------------------

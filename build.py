@@ -101,6 +101,7 @@ KINDS: dict[str, tuple[str, str]] = {
 # becomes a join link in the Location column. A new provider is a new entry.
 REMOTE_PROVIDERS: dict[str, str] = {
     "Zoom": "https://zoom.us/j/{code}",
+    "GoTo": "https://global.gotomeeting.com/join/{code}",
 }
 
 REMOTE_CODE_RE = re.compile(r"^\d{9,11}$")
@@ -146,17 +147,41 @@ CONTACT = {
 # reader expands the location name in the table. A new place is a new
 # entry; a single line may be a plain string.
 LOCATIONS: dict[str, tuple[str, ...] | str] = {
-    "Town Hall": ("Westhampton Town Hall", "1 South Road", "Westhampton, MA 01027"),
-    "Town Hall Annex": ("Westhampton Town Hall Annex", "3 South Road", "Westhampton, MA 01027"),
-    "Public Library": ("Westhampton Public Library", "1 North Road", "Westhampton, MA 01027"),
+    "Town Hall":        ("Westhampton Town Hall", "1 South Road", "Westhampton, MA 01027"),
+    "Town Hall Annex":  ("Westhampton Town Hall Annex", "3 South Road", "Westhampton, MA 01027"),
+    "Public Library":   ("Westhampton Public Library", "1 North Road", "Westhampton, MA 01027"),
     "Galica Residence": ("Galica Residence", "260 North Road", "Westhampton, MA 01027"),
-    "HRHS Library": ("Hampshire Regional High School", "School Library", "19 Stage Road", "Westhampton, MA 01027"),
-    "FHD Office": ("Foothills Health District Office", "45 Main Street", "Williamsburg, MA 01096"),
-    "WH Woods Unit F": ("Westhampton Woods Senior Housing", "13 Main Road Unit F", "Westhampton, MA 01027"),
-    "WES Library": ("Westhampton Elementary School", "School Library", "37 Kings Highway", "Westhampton, MA 01027"),
-    "HRHS Room 133": ("Hampshire Regional High School", "Career Center Guidance Room 133", "19 Stage Road", "Westhampton, MA 01027"),
-    "HRHS Room 148": ("Hampshire Regional High School", "Conference Room 148", "19 Stage Road", "Westhampton, MA 01027"),
+    "HRHS Library":     ("Hampshire Regional High School", "School Library", "19 Stage Road", "Westhampton, MA 01027"),
+    "FHD Office":       ("Foothills Health District Office", "45 Main Street", "Williamsburg, MA 01096"),
+    "WH Woods Unit F":  ("Westhampton Woods Senior Housing", "13 Main Road Unit F", "Westhampton, MA 01027"),
+    "WES Library":      ("Westhampton Elementary School", "School Library", "37 Kings Highway", "Westhampton, MA 01027"),
+    "HRHS Room 133":    ("Hampshire Regional High School", "Career Center Guidance Room 133", "19 Stage Road", "Westhampton, MA 01027"),
+    "HRHS Room 148":    ("Hampshire Regional High School", "Conference Room 148", "19 Stage Road", "Westhampton, MA 01027"),
 }
+
+# Folder names are canonical and may be written out in full; entries here
+# override how a body's name DISPLAYS on the page (for space). Everything
+# else — URLs, filters, audit, intake — keeps using the folder name.
+#     "Public Safety Complex Committee": "Pub. Safety Complex Comm.",
+DISPLAY_NAMES: dict[str, str] = {
+    "Council on Aging Advisory Board":                  "COA Advisory Board",
+    "Foothills Health District Board":                  "FHD Board",
+    "Foothills Health District Executive Committee":    "FHD Executive Committee",
+    "Foothills Health District Personnel Committee":    "FHD Personnel Committee",
+    "Hampshire Public Health Preparedness Coalition":   "HPHP Coalition",
+    "Hampshire Regional School Committee":              "HRS Committee",
+    "Hampshire Regional School Finance Subcommittee":   "HRS Finance Subcommittee",
+    "Hampshire Regional School Policy Subcommittee":    "HRS Policy Subcommittee",
+    "Property and Energy Committee":                    "Property & Energy Comm.",
+    "Public Safety Complex Committee":                  "Pub. Safety Complex Comm.",
+    "Town Administrator Search Committee":              "Town Admin. Search Comm.",
+    "Westhampton Elementary School Committee":          "WES Committee",
+    "Zoning Bylaw Review Committee":                    "Zoning Bylaw Review Comm.",
+}
+
+
+def display(name: str) -> str:
+    return DISPLAY_NAMES.get(name, name)
 
 _TEL = "".join(c for c in CONTACT["phone"] if c.isdigit())
 
@@ -248,11 +273,12 @@ def timing_tag(date: datetime.date, today: datetime.date) -> str:
 
 
 def body_sort_key(section: str, body: str):
-    """Known bodies keep their declared (logical) order; others alphabetical."""
+    """Known bodies keep their declared (logical) order; others sort
+    alphabetically by how they display."""
     known = SECTIONS.get(section, {}).get("known_bodies", [])
     if body in known:
         return (0, known.index(body), "")
-    return (1, 0, body.lower())
+    return (1, 0, display(body).lower())
 
 
 def pdf_info(path: Path) -> tuple[bool, int | None]:
@@ -936,6 +962,14 @@ INDEX_SCRIPT = """
            r.getAttribute('data-body') === rest.slice(sep2 + 1);
   }
 
+  function rowMatchesLoc(r, val) {
+    if (!val) return true;
+    if (val === 'g|in') return Boolean(r.getAttribute('data-loc'));
+    if (val === 'g|virtual') return Boolean(r.getAttribute('data-remote'));
+    return r.getAttribute('data-loc') === val ||
+           r.getAttribute('data-remote') === val;
+  }
+
   function apply() {
     var bodyVal = c.body.value, year = c.year.value, loc = c.loc.value;
     var status = c.status.value;
@@ -944,8 +978,7 @@ INDEX_SCRIPT = """
     rows.forEach(function (r) {
       var ok = rowMatchesBody(r, bodyVal) &&
                (!year || r.getAttribute('data-year') === year) &&
-               (!loc || r.getAttribute('data-loc') === loc ||
-                r.getAttribute('data-remote') === loc) &&
+               rowMatchesLoc(r, loc) &&
                (!status || r.getAttribute('data-status') === status) &&
                terms.every(function (t) {
                  return r.getAttribute('data-search').indexOf(t) !== -1; });
@@ -984,7 +1017,8 @@ INDEX_SCRIPT = """
     var q = c.q.value.trim();
     setAll('js-print-generated', 'Generated: ' + timestamp());
     setAll('js-print-filters', 'Filters: Year = ' + (c.year.value || 'All') +
-      ', Location = ' + (c.loc.value || 'All') +
+      ', Location = ' + (c.loc.value
+        ? c.loc.options[c.loc.selectedIndex].text : 'All') +
       ', Body = ' + bodyLabel +
       ', Status = ' + (c.status.value
         ? c.status.options[c.status.selectedIndex].text : 'All') +
@@ -1131,7 +1165,7 @@ def cal_event(rec: Record, idx: int) -> str:
     aria = f"{rec.body}, {long_date(rec.date)}"
     return (f'<div class="cal-ev cal-ev-{slug}" data-rec="{idx}">'
             f'{time_html}<div class="cal-ev-name" title="{esc(aria)}">'
-            f'{esc(rec.body)}</div>'
+            f'{esc(display(rec.body))}</div>'
             f'<span class="cal-ev-links">{"".join(links)}</span>'
             f'{place_html}{remote_html}</div>')
 
@@ -1216,18 +1250,26 @@ def build_index_page(records: list[Record], docs: list[Document],
                         key=lambda b: body_sort_key(s, b))
         opts = [f'    <option value="s|{esc(s)}">'
                 f"All {cfg['title'].lower()}</option>"]
-        opts += [f'    <option value="b|{esc(s)}|{esc(b)}">{esc(b)}</option>'
+        opts += [f'    <option value="b|{esc(s)}|{esc(b)}">'
+                 f'{esc(display(b))}</option>'
                  for b in bodies]
         groups.append(f'  <optgroup label="{esc(cfg["title"])}">\n'
                       + "\n".join(opts) + "\n  </optgroup>")
     body_opts = "\n".join(groups)
     year_opts = "\n".join(f'    <option>{y}</option>' for y in years)
-    locations = sorted(
-        {r.before.location for r in ordered
-         if r.before and r.before.location}
-        | {r.before.remote[0] for r in ordered
-           if r.before and r.before.remote})
-    loc_opts = "\n".join(f'    <option>{esc(l)}</option>' for l in locations)
+    places = sorted({r.before.location for r in ordered
+                     if r.before and r.before.location})
+    providers = sorted({r.before.remote[0] for r in ordered
+                        if r.before and r.before.remote})
+    loc_opts = (
+        '  <optgroup label="In-person">\n'
+        '    <option value="g|in">All in-person</option>\n'
+        + "\n".join(f'    <option>{esc(p)}</option>' for p in places)
+        + '\n  </optgroup>\n'
+        '  <optgroup label="Virtual">\n'
+        '    <option value="g|virtual">All virtual</option>\n'
+        + "\n".join(f'    <option>{esc(p)}</option>' for p in providers)
+        + '\n  </optgroup>')
 
     dash = '<span class="muted">—</span>'
     rows = []
@@ -1273,7 +1315,8 @@ def build_index_page(records: list[Record], docs: list[Document],
         loc_td = (f'<td class="loc">{loc_html}</td>' if loc_html
                   else f'<td class="loc">{dash}</td>')
         search = " ".join([
-            rec.body.lower(), pill.lower(), rec.date.isoformat(),
+            rec.body.lower(), display(rec.body).lower(), pill.lower(),
+            rec.date.isoformat(),
             long_date(rec.date).lower(), short_date(rec.date).lower(), tag,
         ] + ([place.lower()] if place else [])
           + ([remote[0].lower()] if remote else []))
@@ -1289,7 +1332,7 @@ def build_index_page(records: list[Record], docs: list[Document],
             f'<span class="date-y">{rec.date.year}</span></th>\n'
             f'{time_td}\n'
             f'{loc_td}\n'
-            f'<td>{esc(rec.body)}</td>\n'
+            f'<td>{esc(display(rec.body))}</td>\n'
             f'<td class="center"><span class="tag tag-section {pill_class}">{esc(pill)}</span></td>\n'
             f'<td class="center"><span class="tag tag-{tag}">{tag.capitalize()}</span></td>\n'
             f'<td class="doc">{doc_cell(rec.before)}</td>\n'

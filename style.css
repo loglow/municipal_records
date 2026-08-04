@@ -433,9 +433,8 @@ button.tag:hover,
 /* Remote-meeting pill in the Location column: two connected segments —
    the provider name (a filter toggle) and, when the filename carried a
    meeting code, a join link with an external-link icon. Without a code
-   the pill is gray and linkless (the name still filters). */
+   the pill keeps its color, just linkless (the name still filters). */
 .tag-remote { color: var(--tag-remote-ink); background: var(--tag-remote-bg); }
-.tag-remote.nolink { color: var(--tag-past-ink); background: var(--tag-past-bg); }
 /* The split pill's border lives on its two segments, not the wrapper,
    so hover can outline just the hovered half. The divider is a shared
    edge: the link's left border overlaps the name's (transparent at
