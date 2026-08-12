@@ -110,10 +110,16 @@ def infer_role(low: str) -> str | None:
 
 # Subcommittees print their parent organization's letterhead; when a
 # child-specific alias is present, the child wins over its parent.
-PARENT = {"FHD Executive Committee": "FHD Board",
-          "FHD Personnel Committee": "FHD Board",
-          "HRS Finance Subcommittee": "HRS Committee",
-          "HRS Policy Subcommittee": "HRS Committee"}
+PARENT = {
+    "Foothills Health District Executive Committee":
+        "Foothills Health District Board",
+    "Foothills Health District Personnel Committee":
+        "Foothills Health District Board",
+    "Hampshire Regional School Finance Subcommittee":
+        "Hampshire Regional School Committee",
+    "Hampshire Regional School Policy Subcommittee":
+        "Hampshire Regional School Committee",
+}
 
 
 GUEST_RE = re.compile(r"(?:\bwith|\bw/)\s+(?:the\s+)?(?:westhampton\s+)?"

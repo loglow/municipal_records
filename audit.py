@@ -151,6 +151,8 @@ BODY_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "Council on Aging Advisory Board": (
         "council on aging",
+        "coa advisory board",
+        "coa meeting",
     ),
     "Foothills Health District Board": (
         "foothills health district",
@@ -437,6 +439,23 @@ def zoom_codes_in(text: str, raw: str) -> set[str]:
     return codes
 
 
+# GoTo join URLs, and the hyphenated access-code form GoTo prints
+# ("701-086-549"). Phone numbers don't match: US numbers group 3-3-4.
+RE_GOTO_URL = re.compile(r"gotomeeting\.com/join/(\d{9,11})")
+RE_GOTO_ID = re.compile(r"\b(\d{3})-(\d{3})-(\d{3})\b")
+
+
+def remote_codes_in(text: str, raw: str) -> set[str]:
+    """Meeting codes for every known provider — the audit checks filename
+    codes against this. (intake's classifier stays Zoom-only and keeps
+    using zoom_codes_in directly.)"""
+    codes = zoom_codes_in(text, raw)
+    codes |= set(RE_GOTO_URL.findall(text)) | set(RE_GOTO_URL.findall(raw))
+    for m in RE_GOTO_ID.finditer(text):
+        codes.add("".join(m.groups()))
+    return codes
+
+
 def raw_streams_text(path: Path) -> str:
     """Raw bytes + inflated streams as text — catches URLs that live in
     link annotations rather than page text."""
@@ -636,15 +655,15 @@ def main() -> int:
                                f"almost never right; verify or find the "
                                f"code"))
         if fcode:
-            codes = zoom_codes_in(text, raw_streams_text(pdf))
+            codes = remote_codes_in(text, raw_streams_text(pdf))
             if not codes:
-                check.append((rel, f"filename Zoom code {fcode}, but the "
-                                   f"document never shows one"))
+                check.append((rel, f"filename {_prov} code {fcode}, but "
+                                   f"the document never shows one"))
             elif fcode in codes:
                 n_zoom_ok += 1
             else:
                 mismatch.append(
-                    (rel, f"filename Zoom code {fcode}; document has "
+                    (rel, f"filename {_prov} code {fcode}; document has "
                           + ", ".join(sorted(codes))))
 
     if live:
