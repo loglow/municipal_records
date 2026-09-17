@@ -147,16 +147,17 @@ CONTACT = {
 # reader expands the location name in the table. A new place is a new
 # entry; a single line may be a plain string.
 LOCATIONS: dict[str, tuple[str, ...] | str] = {
-    "Town Hall":        ("Westhampton Town Hall", "1 South Road", "Westhampton, MA 01027"),
-    "Town Hall Annex":  ("Westhampton Town Hall Annex", "3 South Road", "Westhampton, MA 01027"),
-    "Public Library":   ("Westhampton Public Library", "1 North Road", "Westhampton, MA 01027"),
-    "Galica Residence": ("Galica Residence", "260 North Road", "Westhampton, MA 01027"),
-    "HRHS Library":     ("Hampshire Regional High School", "School Library", "19 Stage Road", "Westhampton, MA 01027"),
-    "FHD Office":       ("Foothills Health District Office", "45 Main Street", "Williamsburg, MA 01096"),
-    "WH Woods Unit F":  ("Westhampton Woods Senior Housing", "13 Main Road Unit F", "Westhampton, MA 01027"),
-    "WES Library":      ("Westhampton Elementary School", "School Library", "37 Kings Highway", "Westhampton, MA 01027"),
-    "HRHS Room 133":    ("Hampshire Regional High School", "Career Center Guidance Room 133", "19 Stage Road", "Westhampton, MA 01027"),
-    "HRHS Room 148":    ("Hampshire Regional High School", "Conference Room 148", "19 Stage Road", "Westhampton, MA 01027"),
+    "Town Hall":            ("Westhampton Town Hall", "1 South Road", "Westhampton, MA 01027"),
+    "Town Hall Annex":      ("Westhampton Town Hall Annex", "3 South Road", "Westhampton, MA 01027"),
+    "Public Library":       ("Westhampton Public Library", "1 North Road", "Westhampton, MA 01027"),
+    "Galica Residence":     ("Galica Residence", "260 North Road", "Westhampton, MA 01027"),
+    "HRHS Library":         ("Hampshire Regional High School", "School Library", "19 Stage Road", "Westhampton, MA 01027"),
+    "FHD Office":           ("Foothills Health District Office", "45 Main Street", "Williamsburg, MA 01096"),
+    "WH Woods Unit F":      ("Westhampton Woods Senior Housing", "13 Main Road Unit F", "Westhampton, MA 01027"),
+    "WES Library":          ("Westhampton Elementary School", "School Library", "37 Kings Highway", "Westhampton, MA 01027"),
+    "HRHS Room 133":        ("Hampshire Regional High School", "Career Center Guidance Room 133", "19 Stage Road", "Westhampton, MA 01027"),
+    "HRHS Room 148":        ("Hampshire Regional High School", "Conference Room 148", "19 Stage Road", "Westhampton, MA 01027"),
+    "JWO Transit Center":   ("John W. Olver Transit Center", "2nd Floor Meeting Room 218", "12 Olive Street", "Greenfield, MA 01301"),
 }
 
 # Folder names are canonical and may be written out in full; entries here
@@ -164,19 +165,20 @@ LOCATIONS: dict[str, tuple[str, ...] | str] = {
 # else — URLs, filters, audit, intake — keeps using the folder name.
 #     "Public Safety Complex Committee": "Pub. Safety Complex Comm.",
 DISPLAY_NAMES: dict[str, str] = {
-    "Council on Aging Advisory Board":                  "COA Advisory Board",
-    "Foothills Health District Board":                  "FHD Board",
-    "Foothills Health District Executive Committee":    "FHD Executive Committee",
-    "Foothills Health District Personnel Committee":    "FHD Personnel Committee",
-    "Hampshire Public Health Preparedness Coalition":   "HPHP Coalition",
-    "Hampshire Regional School Committee":              "HRS Committee",
-    "Hampshire Regional School Finance Subcommittee":   "HRS Finance Subcommittee",
-    "Hampshire Regional School Policy Subcommittee":    "HRS Policy Subcommittee",
-    "Property and Energy Committee":                    "Property & Energy Comm.",
-    "Public Safety Complex Committee":                  "Pub. Safety Complex Comm.",
-    "Town Administrator Search Committee":              "Town Admin. Search Comm.",
-    "Westhampton Elementary School Committee":          "WES Committee",
-    "Zoning Bylaw Review Committee":                    "Zoning Bylaw Review Comm.",
+    "Council on Aging Advisory Board":                                  "COA Advisory Board",
+    "Foothills Health District Board":                                  "FHD Board",
+    "Foothills Health District Executive Committee":                    "FHD Executive Committee",
+    "Foothills Health District Personnel Committee":                    "FHD Personnel Committee",
+    "Hampshire Public Health Preparedness Coalition":                   "HPHP Coalition",
+    "Hampshire Regional School Committee":                              "HRS Committee",
+    "Hampshire Regional School Finance Subcommittee":                   "HRS Finance Subcommittee",
+    "Hampshire Regional School Policy Subcommittee":                    "HRS Policy Subcommittee",
+    "Property and Energy Committee":                                    "Property & Energy Comm.",
+    "Public Safety Complex Committee":                                  "Pub. Safety Complex Comm.",
+    "Town Administrator Search Committee":                              "Town Admin. Search Comm.",
+    "Westhampton Elementary School Committee":                          "WES Committee",
+    "Zoning Bylaw Review Committee":                                    "Zoning Bylaw Review Comm.",
+    "Franklin Regional Transit Authority Finance and Audit Committee":  "FRTA Finance & Audit Comm.",
 }
 
 
