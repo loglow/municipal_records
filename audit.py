@@ -121,6 +121,7 @@ LOCATION_ALIASES: dict[str, tuple[str, ...]] = {
     "Public Library": ("1 north rd",),
     "Galica Residence": ("galica", "260 north rd"),
     "HRHS Library": ("hampshire regional", "school library"),
+    "HRHS Auditorium": ("hampshire regional", "auditorium"),
     "HRHS Room 133": ("hampshire regional", "room 133", "rm 133"),
     "HRHS Room 148": ("hampshire regional", "room 148", "rm 148"),
     "FHD Office": ("foothills",),
@@ -146,6 +147,10 @@ def location_probes(name: str) -> set[str]:
 # How documents actually write each body folder's name — beyond the
 # folder name itself, which is probed automatically.
 BODY_ALIASES: dict[str, tuple[str, ...]] = {
+    "Agricultural Commission": (
+        "ag commission",
+        "agricultural comm",    # OCR splits it: 'Commssi on'
+    ),
     "Board of Health": (
         "boh",
     ),
@@ -155,7 +160,7 @@ BODY_ALIASES: dict[str, tuple[str, ...]] = {
         "coa meeting",
     ),
     "Foothills Health District Board": (
-        "foothills health district",
+        "foothills health distric",     # also matches OCR that drops the T
     ),
     "Foothills Health District Executive Committee": (
         "executive committee",
@@ -167,6 +172,9 @@ BODY_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "Finance Committee": (
         "fincom",
+    ),
+    "Franklin Regional Transit Authority Finance and Audit Committee": (
+        "franklin regional transit authority",
     ),
     "Hampshire Public Health Preparedness Coalition": (
         "public health preparedness coalition",
@@ -194,6 +202,11 @@ BODY_ALIASES: dict[str, tuple[str, ...]] = {
     "Property and Energy Committee": (
         "property and energy",
         "energy assessment"
+    ),
+    "Solar Subcommittee": (
+        "solar/energy",
+        "solar subcomm",        # survives ligature-mangled 'SubcommiƩee'
+        "elementary school solar",
     ),
     "Town Administrator Search Committee": (
         "town administrator search committee",
@@ -237,8 +250,9 @@ def body_probes(name: str) -> set[str]:
 VERIFIED: dict[str, str] = {
     "Boards/Board of Health/Minutes/2026-03-09.pdf":
         "meeting was on Monday 2026-03-09; the 3/10/26 heading is incorrect",
-    "Town Meetings/Annual Town Meeting/Warrants/2026-06-22 0900 Town Hall.pdf":
-        "continuation of the 2026-05-09 meeting; same warrant for both",
+    "Town Meetings/Annual Town Meeting/Warrants/2026-06-22 1800 Town Hall.pdf":
+        "continuation of the 2026-05-09 meeting; same warrant for both, "
+        "adjourned to 6 PM",
     "Town Meetings/Special Town Meeting/Minutes/2025-05-10.pdf":
         "header says Annual by mistake; has 4 articles versus 39",
     "Boards/Planning Board/Minutes/2026-01-13.pdf":
@@ -293,6 +307,8 @@ VERIFIED: dict[str, str] = {
         "suspected board",
     "Boards/Public Safety Complex Committee/Agendas/2017-05-08 1800 Town Hall.pdf":
         "verified handwritten time",
+    "Boards/Conservation Commission/Minutes/2026-06-17.pdf":
+        "heading has no year ('Meeting Minutes 6/17'); 2026 per the body",
 }
 
 # ---------------------------------------------------------------------------

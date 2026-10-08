@@ -152,6 +152,7 @@ LOCATIONS: dict[str, tuple[str, ...] | str] = {
     "Public Library":       ("Westhampton Public Library", "1 North Road", "Westhampton, MA 01027"),
     "Galica Residence":     ("Galica Residence", "260 North Road", "Westhampton, MA 01027"),
     "HRHS Library":         ("Hampshire Regional High School", "School Library", "19 Stage Road", "Westhampton, MA 01027"),
+    "HRHS Auditorium":      ("Hampshire Regional High School", "School Auditorium", "19 Stage Road", "Westhampton, MA 01027"),
     "FHD Office":           ("Foothills Health District Office", "45 Main Street", "Williamsburg, MA 01096"),
     "WH Woods Unit F":      ("Westhampton Woods Senior Housing", "13 Main Road Unit F", "Westhampton, MA 01027"),
     "WES Library":          ("Westhampton Elementary School", "School Library", "37 Kings Highway", "Westhampton, MA 01027"),
